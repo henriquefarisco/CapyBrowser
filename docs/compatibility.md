@@ -2,11 +2,20 @@
 
 CapyBrowser modules must remain portable browser-core logic and must not depend on CapyOS runtime internals.
 
-Authoritative CapyOS references:
+## CapyOS reference version
+
+- CapyOS core pinned for this contract: `0.8.0-alpha.240+20260519`
+- Authoritative cross-repo matrix: `CapyOS/docs/reference/integration/compatibility-matrix.md`
+- Canonical manifest format consumed by the in-tree adapter: `CapyOS/docs/reference/integration/capypkg-publisher-manifest-format.md`
+- Manual deploy runbook: `CapyOS/docs/operations/manual-module-deploy-runbook.md`
+
+## Authoritative CapyOS references
 
 - `CapyOS/docs/reference/integration/modular-installation-architecture.md`
 - `CapyOS/docs/reference/integration/browser-core-integration-contract.md`
 - `CapyOS/docs/reference/integration/media-codec-integration-contract.md`
+- `CapyOS/docs/reference/integration/compatibility-matrix.md`
+- `CapyOS/docs/reference/integration/capypkg-publisher-manifest-format.md`
 
 ## Owned ABI
 
@@ -62,3 +71,25 @@ Before CapyOS consumes a CapyBrowser release, externally validate:
 - no direct CapyOS kernel/runtime includes.
 
 CapyBrowser integration is gated by Etapas 6-7.
+
+## Publishing as a Capy package (future, when the relevant stage opens)
+
+When CapyBrowser is delivered as a remote module to the CapyOS
+`services/capypkg` adapter, the publisher must follow
+`CapyOS/docs/reference/integration/capypkg-publisher-manifest-format.md`.
+The key requirements that affect CapyBrowser are:
+
+- `payload_url` must be HTTPS only;
+- `payload_sha256` must be lowercase 64 hex of the published artifact;
+- `payload_size` ≤ 1 MiB during the alpha streaming-buffer window;
+- `name` must match the alphabet `[a-zA-Z0-9._-]`;
+- `install_root` must live under `/var/capypkg` or `/opt/`;
+- the Ed25519 signature must cover the canonical descriptor
+  `name=N|version=V|payload_sha256=H|payload_url=U\n`;
+- `depends` must declare `org.capyos.codecs.image-basic` (or the
+  active `capy-codec-image` package name) when image rendering is
+  enabled.
+
+Until CapyAgent publishes its Ed25519 signer, CapyBrowser cannot be
+installed from a `signed` repository in production; lab tests with
+`--unsigned` repositories are possible but must never be promoted.
