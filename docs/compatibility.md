@@ -4,7 +4,7 @@ CapyBrowser modules must remain portable browser-core logic and must not depend 
 
 ## CapyOS reference version
 
-- CapyOS core pinned for this contract: `0.8.0-alpha.240+20260519`
+- CapyOS core pinned for this contract: `0.8.0-alpha.241+20260519`
 - Authoritative cross-repo matrix: `CapyOS/docs/reference/integration/compatibility-matrix.md`
 - Canonical manifest format consumed by the in-tree adapter: `CapyOS/docs/reference/integration/capypkg-publisher-manifest-format.md`
 - Manual deploy runbook: `CapyOS/docs/operations/manual-module-deploy-runbook.md`
