@@ -4,7 +4,7 @@ CapyBrowser is the external browser-core repository for CapyOS.
 
 ## CapyOS reference version
 
-Pinned for this release: `0.8.0-alpha.241+20260519`. Update this section together with `docs/compatibility.md` whenever the CapyOS core version, ABI or canonical manifest format changes.
+Pinned for this release: `0.8.0-alpha.244+20260520`. Update this section together with `docs/compatibility.md` whenever the CapyOS core version, ABI or canonical manifest format changes.
 
 ## Migrated content
 
