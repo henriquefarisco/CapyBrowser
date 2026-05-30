@@ -1,6 +1,6 @@
 # Security Policy
 
-CapyBrowser 0.0.3 is an early service release. Report security issues privately to the repository owner before opening public issues.
+CapyBrowser is an early service release (current version in `VERSION`). Report security issues privately to the repository owner before opening public issues.
 
 ## Release gate
 

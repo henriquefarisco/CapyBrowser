@@ -7,11 +7,11 @@ on CapyOS runtime internals.
 
 ## CapyOS reference version
 
-- CapyOS core pinned for this contract: `0.8.0-alpha.244+20260520`
+- CapyOS core pinned for this contract: `0.8.0-alpha.261+20260529`
 - Authoritative cross-repo matrix: [`CapyOS/docs/reference/integration/compatibility-matrix.md`](../../CapyOS/docs/reference/integration/compatibility-matrix.md)
 - Canonical manifest format consumed by the in-tree adapter: [`CapyOS/docs/reference/integration/capypkg-publisher-manifest-format.md`](../../CapyOS/docs/reference/integration/capypkg-publisher-manifest-format.md)
 - Manual deploy runbook: [`CapyOS/docs/operations/manual-module-deploy-runbook.md`](../../CapyOS/docs/operations/manual-module-deploy-runbook.md)
-- Current cross-repo audit: [`CapyOS/docs/reference/integration/compatibility-audit-2026-05-20.md`](../../CapyOS/docs/reference/integration/compatibility-audit-2026-05-20.md)
+- Current cross-repo audit: [`CapyOS/docs/reference/integration/compatibility-audit-2026-05-23.md`](../../CapyOS/docs/reference/integration/compatibility-audit-2026-05-23.md)
 
 ## Authoritative CapyOS references
 
@@ -32,7 +32,13 @@ This ABI covers:
 - static HTML/CSS parse contracts (Etapa 7);
 - future display-list format (versioned, additive, deterministic);
 - deterministic parse/layout errors;
-- internal limits on memory, time and input size.
+- internal limits on memory, time and input size;
+- download orchestration (planned, additive, Etapa 7) — URL resolution,
+  metadata parse, deterministic filename derivation and streaming to a
+  host-provided download sink (see "Download surface" below);
+- private/anonymous session controls (planned, additive, Etapa 7+) —
+  ephemeral state and minimal request identity at the application layer
+  (see "Private session surface" below).
 
 CapyBrowser does **not** own:
 
@@ -76,6 +82,8 @@ CapyBrowser does **not** own:
 | Image decode failure | codec adapter returns negative | UI shows placeholder; page still renders |
 | JavaScript present | parser blocks execution (Etapas 6-7 do not execute JS) | UI shows warning; page renders without JS |
 | Dangerous redirect (cross-scheme, non-HTTPS) | host adapter rejects | UI displays redirect blocked |
+| Download rejected (planned) | download validator rejects (non-HTTPS, dangerous redirect, invalid/empty/traversal filename) | UI displays download blocked |
+| Download exceeds size limit (planned) | download stream exceeds declared budget | UI displays "download too large" |
 
 All errors must be deterministic. CapyBrowser never crashes the
 desktop, never executes JavaScript before Etapa 12, and never
@@ -90,7 +98,91 @@ auto-follows non-HTTPS redirects.
 | Maximum parse time per page | configurable per integration stage (alpha target: 2 s) | CapyBrowser |
 | Maximum layout depth | bounded by widget core constraints | CapyBrowser |
 | Image decode budget | bounded by `capy-codec-image` limits | CapyCodecs |
+| Maximum download size (planned) | configurable per integration stage; enforced fail-closed | CapyBrowser (enforce) + CapyOS (storage quota) |
+| Maximum derived filename length (planned) | bounded (alpha target: 255 bytes) | CapyBrowser |
 | Capy package payload | ≤ 1 MiB during alpha streaming-buffer window | CapyOS adapter |
+
+## Download surface (planned, additive, Etapa 7)
+
+File download is a planned additive surface. It is not active until the
+Etapa 7 runtime opens and the CapyOS-side adapter exists. Responsibility is
+split so CapyBrowser stays decoupled from network and filesystem.
+
+CapyBrowser (browser-core) responsibilities:
+
+- resolve and validate the download URL (HTTPS-first; reject non-HTTPS and
+  dangerous/cross-scheme redirects);
+- parse response metadata (MIME type, `Content-Disposition`);
+- derive a deterministic, sanitized filename: strip path separators and
+  `..`, reject control bytes and empty names, bound length;
+- enforce the maximum download size fail-closed;
+- stream bytes to a host-provided download sink via injected callbacks
+  (`download_open` / `download_append` / `download_close`).
+
+CapyOS (host) responsibilities:
+
+- perform the actual filesystem write and the "save as" UX (with CapyUI);
+- apply sandbox, storage quota and filename collision resolution;
+- own the network transport that feeds the stream.
+
+Rules:
+
+- CapyBrowser never opens a socket and never writes a file directly.
+- Deterministic: same `(URL, response headers, declared limits)` → same
+  derived filename and same accept/reject verdict.
+- Fail-closed: non-HTTPS, dangerous redirect, invalid filename or
+  over-budget transfer reject with a documented error; nothing is written.
+- New error codes and callbacks are additive; no existing element changes
+  semantics.
+
+## Private session surface (anonymous mode) (planned, additive, Etapa 7+)
+
+Anonymity spans two layers. CapyBrowser owns only the application layer;
+transport-level anonymity (proxy, onion routing, private DNS) is a CapyOS
+responsibility.
+
+CapyBrowser (browser-core) responsibilities in a private session:
+
+- ephemeral state: no persistent cookies or cache (signalled via adapter
+  flags); session state is discarded at session end;
+- minimal, static `User-Agent` with no version leak, defined by the host
+  adapter contract (the base system HTTP identity stays a CapyOS concern);
+- `Referer` minimized or zeroed; request headers minimal and deterministic;
+- no automatic third-party or external resource loading; no JavaScript
+  (already guaranteed before Etapa 12, which removes most fingerprinting
+  surface);
+- no telemetry of any kind.
+
+CapyOS (host) responsibilities:
+
+- transport anonymity (proxy / onion routing), DNS policy, certificate
+  policy, storage isolation and sandbox;
+- the base system HTTP identity and the cookie/cache storage backends that
+  the ephemeral flags toggle.
+
+Rules:
+
+- Privacy controls affect requests and stored state only; they must not
+  change parse/display determinism. A private session must produce the same
+  HTML-to-text and display-list output as a normal session for identical
+  inputs.
+- The private-session flag and the controlled-`User-Agent` contract are
+  additive host-adapter inputs; no existing surface changes semantics.
+
+## Cross-repo ratification of planned surfaces
+
+The download and private-session surfaces above are documented here as the
+CapyBrowser-owned target, but they are **not ratified cross-repo** until the
+matching CapyOS-side updates land (Etapa 7). Before they become authoritative:
+
+- update [`../../CapyOS/docs/reference/integration/compatibility-matrix.md`](../../CapyOS/docs/reference/integration/compatibility-matrix.md)
+  (CapyBrowser row plus any new error/limit rows);
+- update [`../../CapyOS/docs/reference/integration/browser-core-integration-contract.md`](../../CapyOS/docs/reference/integration/browser-core-integration-contract.md)
+  (download + private-session adapter contract);
+- open a fresh `compatibility-audit-<date>.md` on the CapyOS side.
+
+These are additive surfaces (new callbacks, new error codes, new limits);
+they must not remove or repurpose any existing ABI element.
 
 ## Install/update boundary
 
@@ -144,7 +236,8 @@ The key requirements that affect CapyBrowser are:
 - `payload_size` ≤ 1 MiB during the alpha streaming-buffer window;
 - `name` must match the alphabet `[a-zA-Z0-9._-]`; suggested canonical
   names: `org.capyos.browser.text` (Etapa 6) and
-  `org.capyos.browser.core` (Etapa 7);
+  `org.capyos.browser.core` (Etapa 7); the `Makefile` emits each name via
+  `make package STAGE=text` / `STAGE=core` (default `core`);
 - `install_root` must live under `/var/capypkg` or `/opt/`;
 - the Ed25519 signature must cover the canonical descriptor
   `name=N|version=V|payload_sha256=H|payload_url=U\n`;
