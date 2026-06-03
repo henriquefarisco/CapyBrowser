@@ -1,0 +1,7 @@
+html
+  head
+    title
+      "Hi"
+  body
+    p
+      "Text"

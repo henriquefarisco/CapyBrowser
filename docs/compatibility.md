@@ -7,11 +7,11 @@ on CapyOS runtime internals.
 
 ## CapyOS reference version
 
-- CapyOS core pinned for this contract: `0.8.0-alpha.261+20260529`
+- CapyOS core pinned for this contract: `0.8.0-alpha.262+20260602`
 - Authoritative cross-repo matrix: [`CapyOS/docs/reference/integration/compatibility-matrix.md`](../../CapyOS/docs/reference/integration/compatibility-matrix.md)
 - Canonical manifest format consumed by the in-tree adapter: [`CapyOS/docs/reference/integration/capypkg-publisher-manifest-format.md`](../../CapyOS/docs/reference/integration/capypkg-publisher-manifest-format.md)
 - Manual deploy runbook: [`CapyOS/docs/operations/manual-module-deploy-runbook.md`](../../CapyOS/docs/operations/manual-module-deploy-runbook.md)
-- Current cross-repo audit: [`CapyOS/docs/reference/integration/compatibility-audit-2026-05-23.md`](../../CapyOS/docs/reference/integration/compatibility-audit-2026-05-23.md)
+- Current cross-repo audit: [`CapyOS/docs/reference/integration/compatibility-audit-2026-06-02.md`](../../CapyOS/docs/reference/integration/compatibility-audit-2026-06-02.md)
 
 ## Authoritative CapyOS references
 
@@ -51,6 +51,196 @@ CapyBrowser does **not** own:
   CapyUI desktop session);
 - cache, cookies, sandbox policy (CapyOS adapters);
 - user-facing app lifecycle (CapyOS / CapyUI).
+
+## URL surface (Fase C1) — implemented (host-testable)
+
+The first concrete `capy-browser-core` surface. Lives in `src/url/`
+(`url_parse.{c,h}`, `url_normalize.c`, `origin.c`) and is exercised by the
+golden fixtures under `tests/fixtures/url/` via `make test-url`. It is pure,
+deterministic and allocation-free; it performs no network, filesystem, clock or
+RNG access. **Status:** implemented and host-testable; pending external
+`make validate` and cross-repo ratification before the contract is authoritative
+(see "Cross-repo ratification" below). It does not yet imply a `0.1.0` release.
+
+Entry points:
+
+- `capy_url_parse(input, base, out, warnings)` — parse + RFC 3986 relative
+  resolution against an optional absolute base + normalize. The result is always
+  absolute; a relative reference without an absolute base is rejected.
+- `capy_url_serialize(url, buf, cap)` — deterministic recomposition.
+- `capy_url_origin(url, out)` / `capy_url_origin_equal(a, b)` — origin tuple
+  `(scheme, host, effective port)` and comparison.
+
+Deterministic normalization rules:
+
+- scheme and host are lower-cased; path/query/fragment case is preserved;
+- an explicit default port is dropped (`https`/`wss` 443, `http`/`ws` 80,
+  `ftp` 21); the effective port is still exposed for the origin;
+- `.`/`..` path segments are resolved (RFC 3986 5.2.4); `..` at root is clamped,
+  never escapes;
+- percent-encoding is normalized: `%xx` of unreserved octets is decoded, other
+  triplets keep upper-cased hex; bytes `>= 0x80` are percent-encoded;
+- an authority with an empty path normalizes to `/`.
+- Normalization is **idempotent**: re-parsing a serialized URL reproduces it.
+
+Deliberate decisions (documented, additive):
+
+- HTTPS-first is enforced by the host adapter, not here: non-HTTPS schemes still
+  parse; the adapter rejects the fetch.
+- userinfo (`user@host`) is rejected (anti-phishing) as `CAPY_URL_ERR_HOST`.
+- IDNA/punycode is out of scope for C1; non-ASCII host bytes are percent-encoded.
+- Control bytes (`< 0x20` or `0x7F`) and raw spaces are rejected up front.
+
+Error codes (negative `enum capy_url_status`): `NULL`, `EMPTY`, `TOO_LONG`,
+`CONTROL`, `SPACE`, `PERCENT`, `SCHEME`, `HOST`, `PORT`, `BASE`, `OVERFLOW`.
+
+Warning codes (`enum capy_url_warning`, emitted in a fixed canonical order so the
+sequence is deterministic): `PERCENT_CASE_NORMALIZED`,
+`PERCENT_UNRESERVED_DECODED`, `NON_ASCII_PCT_ENCODED`, `DEFAULT_PORT_DROPPED`,
+`DOT_SEGMENTS_RESOLVED`.
+
+Limits: input `<= CAPY_URL_MAX_LEN` (2048, aligned with CapyOS
+`HTTP_MAX_URL`); per-component caps (scheme 32, host 256, path/query/fragment
+2048) fail closed with `CAPY_URL_ERR_OVERFLOW`.
+
+## HTML-to-text surface ("CapyBrowse Text", Fase C2) — implemented (host-testable)
+
+The first user-facing surface. Lives in `src/text/` (`html_entities.{c,h}`,
+`html_tokenizer.{c,h}`, `text_emit.c` + the public `html_text.h`) and is
+exercised by golden fixtures under `tests/fixtures/html-to-text/` via
+`make test-text`. It depends on the Fase C1 URL core to resolve link targets and
+on the `capy-codec-image` ABI for nothing yet (images arrive in Fase C3). Pure,
+deterministic, allocation-free; no network, filesystem, clock or RNG.
+**Status:** implemented and host-testable; pending external `make validate`,
+cross-repo ratification and the `0.2.0` release cut (target Etapa 6).
+
+Entry point:
+
+- `capy_html_to_text(html, html_len, base_url, text_buf, text_cap, out)` —
+  renders the body into `text_buf` and fills `out` with the title, the resolved
+  link targets, the warning set and a truncation flag.
+
+Output (the "CapyBrowse Text" view):
+
+- **title** — first `<title>`, entity-decoded and whitespace-normalized
+  (`out->title` / `out->has_title`);
+- **body** — normalized block text in `text_buf`; inline links appear as `[n]`
+  markers;
+- **links** — `out->links[1..n]` hold the resolved, normalized absolute URLs
+  (resolved through `capy_url_parse` against `base_url`);
+- **warnings** — `out->warnings` (deterministic, one of each in enum order);
+- **truncation** — `out->truncated` plus the matching warning.
+
+Deterministic rules:
+
+- tolerant: malformed HTML never aborts; recovery is reproducible and flagged
+  (`UNCLOSED_TAG`, `UNCLOSED_COMMENT`);
+- no scripting: `<script>`/`<style>` content is dropped (JS stays blocked until
+  Etapa 12);
+- clean output: the body/title contain no control bytes other than the block
+  separator `\n` (CRLF, tabs and other control bytes are normalized/dropped);
+- whitespace runs collapse to a single space and blocks are trimmed; common
+  named, decimal and hex entities are decoded to UTF-8; `&nbsp;` collapses to a
+  space;
+- links resolve via C1; an `href` that cannot resolve (e.g. relative with no
+  base) is dropped from the numbered list with `LINK_UNRESOLVED`.
+
+Limits (alpha): HTML input `<= CAPY_TEXT_MAX_INPUT` (256 KiB); up to
+`CAPY_TEXT_MAX_LINKS` (64) numbered links; title `<= CAPY_TEXT_TITLE_MAX` (256).
+Over-budget input/output/links/title set `out->truncated` and a warning. A
+single-pass O(n) tokenizer plus the input cap bound parse time; an injected
+parse-time clock budget is additive future work.
+
+Warnings (`enum capy_text_warning`, fixed canonical order): `INPUT_TRUNCATED`,
+`OUTPUT_TRUNCATED`, `TITLE_TRUNCATED`, `LINK_BUDGET`, `LINK_UNRESOLVED`,
+`ENTITY_INVALID`, `UNCLOSED_TAG`, `UNCLOSED_COMMENT`.
+
+Deferred to later phases (documented, additive): full attribute model and a
+DOM tree (Fase M1), CSS (Fase M2), image placeholders via `capy-codec-image`
+(Fase C3), IDNA/punycode, and UTF-8 input validation/replacement.
+
+## Image adapter surface (Fase C3) — implemented (host-testable)
+
+CapyBrowser never decodes images. It requests a decode through an injected host
+adapter callback that routes to the `capy-codec-image` ABI (owned by
+CapyCodecs), and turns any failure into a deterministic, non-fatal placeholder
+so the page still renders. There is no browser-local codec; the deprecated
+`src/codecs/` BMP snapshot is superseded by this adapter and stays out of the
+decode path.
+
+Files: `src/adapter/host_adapter.h` (the injection surface) and
+`src/codec/image_adapter.{c,h}` (orchestration), exercised by
+`tests/test_image_adapter.c` with a deterministic stub codec via
+`make test-image`. **Status:** implemented and host-testable; pending external
+`make validate`, cross-repo ratification and consumption by the static
+display-list (Fase M3 / Etapa 7). Render itself only happens at Etapa 7.
+
+Injection surface (`struct capy_host_adapter`, supplied by CapyOS):
+
+- `decode_image(data, len, out, user) -> int` — decode encoded bytes to
+  host-owned RGBA8888 via `capy-codec-image`; 0 on success, negative on failure;
+- `release_image(image, user)` — free pixels from a successful decode;
+- `codec_user_data`, plus `max_image_width` / `max_image_height` (0 selects the
+  built-in default `CAPY_IMAGE_DEFAULT_MAX_DIM` = 4096).
+- Network/cache/cookie hooks are additive future fields; existing fields never
+  change meaning.
+
+Orchestration (`capy_image_request` / `capy_image_release`):
+
+- fail-closed and non-fatal: a missing decoder, empty input, codec error, bad
+  dimensions or an over-budget image all yield `CAPY_IMAGE_PLACEHOLDER` with a
+  deterministic `enum capy_image_reason` (`NO_DECODER`, `EMPTY_INPUT`,
+  `DECODE_FAILED`, `BAD_DIMENSIONS`, `TOO_LARGE`) — never a page failure;
+- ownership: pixels stay host-owned; the core releases them via `release_image`
+  on rejection and on `capy_image_release` (which is idempotent);
+- decoupled: `host_adapter.h` only declares callback types and an RGBA struct;
+  it includes no CapyOS or CapyCodecs headers.
+
+## DOM-like parse surface (Fase M1) — implemented (host-testable)
+
+A tolerant HTML → element/text tree, built by reusing the Fase C2 tokenizer. It
+is the structural substrate for CSS (Fase M2) and static layout / display-list
+(Fase M3); it is **not** a full HTML5 tree builder (no implied-tag insertion,
+no adoption-agency re-parenting). Lives in `src/html/` (`dom.{c,h}`,
+`html_parse.c`, internal `dom_internal.h`), exercised by `tests/test_html.c`
+with golden tree dumps under `tests/fixtures/dom/` via `make test-html`.
+**Status:** implemented and host-testable; pending external `make validate` and
+the `0.3.0` release cut (prep Etapa 7).
+
+Entry point and shape:
+
+- `capy_html_parse(html, html_len, doc)` — builds the tree into a caller-provided
+  `struct capy_dom_doc` (allocation-free arena: node pool + attribute pool +
+  string arena). Accessors: `capy_dom_node_at`, `capy_dom_string`,
+  `capy_dom_find_attr`.
+- Nodes are `CAPY_DOM_DOCUMENT` (synthetic root), `CAPY_DOM_ELEMENT`
+  (lower-cased tag + attributes) or `CAPY_DOM_TEXT`. Tree links are pool indices
+  (`CAPY_DOM_NONE` sentinel).
+- Attribute names are lower-cased; attribute values and text are entity-decoded
+  to UTF-8 (except `<script>`/`<style>` text, kept raw); the DOM **preserves
+  whitespace** (collapsing is a layout concern); non-whitespace control bytes
+  are dropped.
+
+Tolerant, deterministic rules:
+
+- void elements (`area base br col embed hr img input link meta param source
+  track wbr`) never get children; an end tag closes the nearest matching open
+  element (and anything still open inside it); a stray end tag warns and is
+  ignored;
+- nesting depth is bounded by `CAPY_DOM_MAX_DEPTH`; node/attr/string arenas are
+  bounded — overflow sets `doc->truncated` and a budget warning, never a crash;
+- same input → same tree, same warning sequence (recorded once each in
+  first-occurrence order).
+
+Warnings (`enum capy_dom_warning`): `INPUT_TRUNCATED`, `NODE_BUDGET`,
+`ATTR_BUDGET`, `STRING_BUDGET`, `DEPTH_LIMIT`, `STRAY_END_TAG`, `UNCLOSED_TAG`,
+`UNCLOSED_COMMENT`.
+
+Limits (alpha, configurable): nodes `CAPY_DOM_MAX_NODES` (1024), attributes
+`CAPY_DOM_MAX_ATTRS` (1024), string arena `CAPY_DOM_STRING_ARENA` (64 KiB),
+depth `CAPY_DOM_MAX_DEPTH` (128), HTML input 256 KiB. The tokenizer now exposes
+a general attribute list (`struct capy_html_attr`) additively; the C2 `href`
+fast-path is unchanged.
 
 ## Compatibility rules
 

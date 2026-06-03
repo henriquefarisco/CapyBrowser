@@ -3,8 +3,8 @@
 **Status:** proposta de planejamento de produto/engenharia. Subordinada
 aos documentos de contrato; não altera ABI nem limites até ser refletida
 em `compatibility.md` e na matriz cross-repo do CapyOS.
-**Versão atual:** `0.0.6`
-**Pin CapyOS:** `0.8.0-alpha.261+20260529` (ver [`compatibility.md`](compatibility.md)).
+**Versão atual:** `0.3.0` (release que entrega C1+C2+C3+M1; alvo de versão da fase M1).
+**Pin CapyOS:** `0.8.0-alpha.262+20260602` (ver [`compatibility.md`](compatibility.md)).
 **Política local:** este computador é **somente leitura/edição**. Todo gate
 (`make validate`, `make package`, golden fixtures de host, smokes do CapyOS)
 é executado **externamente** por humano ou CI.
@@ -123,14 +123,21 @@ aqui é puro e testável no host.
 
 ### Fase C1 — Core de URL (`0.1.0`)
 
+**Status:** **código implementado e host-testável** (commit atual); pendente de
+`make validate` externo, ratificação cross-repo (§9) e do corte de release
+`0.1.0`. O contrato concreto está descrito em
+[`compatibility.md`](compatibility.md) ("URL surface (Fase C1)").
+
 **Objetivo:** parser e normalizador de URL determinísticos — base de toda
 navegação e resolução de links.
 
-**Entregáveis (layout proposto):**
-- `src/url/url_parse.{c,h}` — parse de URL absoluta e relativa contra base.
-- `src/url/url_normalize.c` — lowercase de scheme/host; path case preservado; não-ASCII via percent-encoding; normalização canônica de `.`/`..`.
-- `src/url/origin.c` — tupla de origem `(scheme, host, port)`.
-- `tests/test_url.c` + `tests/fixtures/url/`.
+**Entregáveis (implementados):**
+- [feito] `src/url/url_parse.{c,h}` — parse de URL absoluta e relativa contra base (resolução RFC 3986 5.2).
+- [feito] `src/url/url_normalize.c` — lowercase de scheme/host; path case preservado; não-ASCII via percent-encoding; decode de unreserved + hex maiúsculo; normalização canônica de `.`/`..`; serialização; default-port; warnings.
+- [feito] `src/url/origin.c` — tupla de origem `(scheme, host, port efetiva)` + igualdade.
+- [feito] `src/url/url_internal.h` — helpers ASCII determinísticos + decls internas (não faz parte da ABI pública).
+- [feito] `tests/test_url.c` (runner orientado a fixtures + idempotência + origem) e 20 casos golden em `tests/fixtures/url/` (absolutas, relativas, percent-encoding, IDN/percent, dot-segments/clamp, default-port, e rejeição de controle/espaço/percent/host/port/base).
+- [feito] `Makefile` — alvo `test-url` em `all`/`validate`; `lint`/`security` cobrem `src/url/`.
 
 **Regras:**
 - HTTPS-first: schemes não-HTTPS **parseiam**, mas o adapter de host rejeita o fetch.
@@ -145,14 +152,20 @@ navegação e resolução de links.
 
 ### Fase C2 — `CapyBrowse Text` (HTML→texto) (`0.2.0`) — alvo da Etapa 6
 
+**Status:** **código implementado e host-testável** (commit atual); pendente de
+`make validate` externo, ratificação cross-repo (§9) e do corte de release
+`0.2.0`. Contrato concreto em [`compatibility.md`](compatibility.md)
+("HTML-to-text surface").
+
 **Objetivo:** primeiro navegador **utilizável**: entrar num site e ler
 conteúdo em texto, com links numerados navegáveis. Sem JS, sem recurso externo.
 
-**Entregáveis:**
-- `src/text/html_entities.c` — decode de entidades HTML comuns.
-- `src/text/html_tokenizer.c` — tokenizer tolerante (reutilizado depois pelo parser DOM).
-- `src/text/text_emit.c` — emite a saída do contrato CapyBrowse Text.
-- `tests/test_text.c` + `tests/fixtures/html-to-text/`.
+**Entregáveis (implementados):**
+- [feito] `src/text/html_entities.{c,h}` — decode de entidades nomeadas/decimais/hex + encode UTF-8.
+- [feito] `src/text/html_tokenizer.{c,h}` — tokenizer tolerante (rawtext para script/style/title/textarea; captura de `href`); reutilizável pelo parser DOM (M1).
+- [feito] `src/text/text_emit.c` + `src/text/html_text.h` — título, blocos normalizados, links numerados resolvidos via C1, warnings determinísticos e truncamento.
+- [feito] `tests/test_text.c` (runner por fixtures: `.in/.base/.out/.title/.links/.warn`) e 13 casos golden em `tests/fixtures/html-to-text/` (título, blocos, entidades, links resolvidos/relativos, script/style descartados, comentários, br/listas, whitespace, e recuperação de malformado/unclosed).
+- [feito] `Makefile` — alvo `test-text` em `all`/`validate`; `lint`/`security` cobrem `src/text/`.
 
 **Saída (conforme contrato):** título; blocos de texto normalizados; links
 numerados com URL resolvida; warnings de parse; status de truncamento.
@@ -172,13 +185,20 @@ numerados com URL resolvida; warnings de parse; status de truncamento.
 
 ### Fase C3 — Adapter de codec de imagem (`0.2.x`)
 
+**Status:** **código implementado e host-testável** (commit atual); pendente de
+`make validate` externo e de consumo pela display-list estática (M3/Etapa 7).
+Contrato concreto em [`compatibility.md`](compatibility.md) ("Image adapter
+surface").
+
 **Objetivo:** pipeline de imagem **real** sem embutir codec — consumindo
 `capy-codec-image` (CapyCodecs) — e aposentar o snapshot BMP.
 
-**Entregáveis:**
-- `src/adapter/host_adapter.h` — define os callbacks injetados, incluindo `decode_image(bytes) -> rgba32` roteado para `capy-codec-image`.
-- `src/codec/image_adapter.{c,h}` — orquestra pedido de decode, trata falha (emite evento `image decode failure`, segue com placeholder).
-- Marcar `src/codecs/` (BMP) como removível; remover quando o adapter substituir o teste legado (`tests/test_browser_codecs.c`).
+**Entregáveis (implementados):**
+- [feito] `src/adapter/host_adapter.h` — callbacks injetados `decode_image`/`release_image` (roteados para `capy-codec-image`) + budget de dimensões; só declara tipos de callback e a struct RGBA (sem headers do CapyOS/CapyCodecs).
+- [feito] `src/codec/image_adapter.{c,h}` — orquestra o pedido de decode e, em qualquer falha (sem decoder, input vazio, erro de codec, dimensões inválidas, acima do budget), retorna placeholder determinístico (`enum capy_image_reason`); libera os pixels host-owned na rejeição e no release.
+- [feito] `tests/test_image_adapter.c` — stub determinístico cobrindo sucesso/falha/no-decoder/input-vazio/too-large/bad-dims/budget-custom/null + release idempotente; ligado a `make test-image`.
+- [feito] `Makefile` — alvo `test-image` em `all`/`validate`; `lint`/`security` cobrem `src/adapter` + `src/codec`.
+- `src/codecs/` (BMP) permanece **snapshot depreciado e fora do caminho de decode**; remoção só quando o teste legado (`tests/test_browser_codecs.c`) for aposentado (operação destrutiva, deixada para um change dedicado).
 
 **Regras:**
 - CapyBrowser **não decodifica** imagem; só pede ao codec via callback.
@@ -187,7 +207,7 @@ numerados com URL resolvida; warnings de parse; status de truncamento.
 
 **Contrato/ABI:** adiciona o callback de codec ao host adapter; sem novo decoder próprio.
 **Gates externos:** `make validate`; checagem de declaração de dependência de codec; auditoria "sem includes diretos do CapyOS".
-**Dependências:** CapyCodecs publicando `capy-codec-image` consumível (host-only hoje, `0.0.6`).
+**Dependências:** CapyCodecs publicando `capy-codec-image` consumível (host-only hoje, `0.0.7` / ABI v2).
 **Critério de saída:** snapshot BMP retirado do caminho de build; decode roteado 100% via adapter; teste de falha de decode → placeholder determinístico.
 **Mapeia para:** exibir imagens (preparação; render só na Etapa 7).
 
@@ -205,12 +225,20 @@ modo anônimo**. Aqui entram as superfícies de contrato novas (§6).
 
 ### Fase M1 — Parser HTML tolerante → DOM-like (`0.3.0`)
 
+**Status:** **código implementado e host-testável** (commit atual); pendente de
+`make validate` externo e do corte de release `0.3.0`. Contrato concreto em
+[`compatibility.md`](compatibility.md) ("DOM-like parse surface"). Não é o tree
+builder HTML5 completo (sem inserção de tags implícitas nem adoption agency) —
+é "DOM-like" tolerante, suficiente para layout estático.
+
 **Objetivo:** representação DOM-like adequada a layout, a partir de HTML real.
 
-**Entregáveis:**
-- `src/html/dom.{c,h}` — árvore DOM-like determinística.
-- `src/html/html_parse.c` — parser tolerante reaproveitando o tokenizer de C2.
-- `tests/test_html.c` + fixtures de HTML válido e malformado.
+**Entregáveis (implementados):**
+- [feito] `src/html/dom.{c,h}` + `src/html/dom_internal.h` — árvore determinística em arena (node pool + attr pool + string arena), acessores e `warning_name`.
+- [feito] `src/html/html_parse.c` — construtor tolerante (pilha de elementos abertos; elementos void; end-tag fecha o aberto correspondente; end órfã → warning; limite de profundidade; orçamentos de arena fail-closed) reaproveitando o tokenizer de C2.
+- [feito] Extensão aditiva do tokenizer (`struct capy_html_attr` + `attrs[]`/`attr_count`) para o modelo geral de atributos; fast-path de `href` do C2 inalterado.
+- [feito] `tests/test_html.c` (dump determinístico da árvore + asserções de acessores) e 7 casos golden em `tests/fixtures/dom/` (aninhamento, atributos, entidades em texto/atributo, elementos void, end órfã, misnesting, rawtext de script).
+- [feito] `Makefile` — alvo `test-html` em `all`/`validate`; `lint`/`security` cobrem `src/html`.
 
 **Regras:** nunca aborta em malformado; profundidade de layout limitada; mesma entrada → mesma árvore + mesmos warnings.
 **Contrato/ABI:** superfície de parse estático (DOM-like) v1.
@@ -428,7 +456,7 @@ Nunca empurrar bump breaking sem a auditoria e a linha de matriz no mesmo change
 Concluídos neste change:
 
 - [feito] `SECURITY.md` — removida a referência fixa de versão ("0.0.3") para evitar drift futuro (agora aponta para `VERSION`).
-- [feito] Skill `capybrowser-project-map` — alinhado a `0.0.6` / pin `0.8.0-alpha.261+20260529`.
+- [feito] Skill `capybrowser-project-map` — alinhado a `0.3.0` / pin `0.8.0-alpha.262+20260602`.
 - [feito] Versão centralizada no `Makefile` — `VERSION_STR := $(shell cat VERSION)`; `version-check` confere `README.md` contra `VERSION`; literal `0.0.5` removido de `lint`/`version-check`.
 - [feito] `docs/README.md` referencia este roadmap.
 - [feito] `Makefile` alinhado a `compatibility.md`: `make package STAGE=text|core` emite o nome canônico por etapa (`org.capyos.browser.text` na Etapa 6, `org.capyos.browser.core` na Etapa 7; default `core`), com guard fail-closed para `STAGE` inválido.
