@@ -1,0 +1,3 @@
+div { display: block; color: red }
+  p { color: green; font-weight: bold }
+  span { color: red }

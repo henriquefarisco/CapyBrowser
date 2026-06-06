@@ -7,11 +7,11 @@ on CapyOS runtime internals.
 
 ## CapyOS reference version
 
-- CapyOS core pinned for this contract: `0.8.0-alpha.262+20260602`
+- CapyOS core pinned for this contract: `0.8.0-alpha.263+20260606`
 - Authoritative cross-repo matrix: [`CapyOS/docs/reference/integration/compatibility-matrix.md`](../../CapyOS/docs/reference/integration/compatibility-matrix.md)
 - Canonical manifest format consumed by the in-tree adapter: [`CapyOS/docs/reference/integration/capypkg-publisher-manifest-format.md`](../../CapyOS/docs/reference/integration/capypkg-publisher-manifest-format.md)
 - Manual deploy runbook: [`CapyOS/docs/operations/manual-module-deploy-runbook.md`](../../CapyOS/docs/operations/manual-module-deploy-runbook.md)
-- Current cross-repo audit: [`CapyOS/docs/reference/integration/compatibility-audit-2026-06-02.md`](../../CapyOS/docs/reference/integration/compatibility-audit-2026-06-02.md)
+- Current cross-repo audit: [`CapyOS/docs/reference/integration/compatibility-audit-2026-06-06.md`](../../CapyOS/docs/reference/integration/compatibility-audit-2026-06-06.md)
 
 ## Authoritative CapyOS references
 
@@ -182,6 +182,11 @@ Injection surface (`struct capy_host_adapter`, supplied by CapyOS):
 - `release_image(image, user)` — free pixels from a successful decode;
 - `codec_user_data`, plus `max_image_width` / `max_image_height` (0 selects the
   built-in default `CAPY_IMAGE_DEFAULT_MAX_DIM` = 4096).
+- `download_open` / `download_append` / `download_close` + `download_user_data`
+  (Fase M4d) - the streaming download sink the host writes to; NULL when
+  downloads are unsupported (the core then refuses a download fail-closed);
+- `ephemeral_session` / `block_third_party` (Fase M4b) - session privacy flags
+  the host honours; default 0 = a normal session (zero-init preserves behavior);
 - Network/cache/cookie hooks are additive future fields; existing fields never
   change meaning.
 
@@ -242,6 +247,183 @@ depth `CAPY_DOM_MAX_DEPTH` (128), HTML input 256 KiB. The tokenizer now exposes
 a general attribute list (`struct capy_html_attr`) additively; the C2 `href`
 fast-path is unchanged.
 
+## CSS parse surface (Fase M2, part 1) - implemented (host-testable)
+
+A tolerant CSS parser producing a deterministic stylesheet of rules - the input
+to the cascade (Fase M2, part 2). Lives in `src/css/` (`css_parse.{c,h}`),
+exercised by golden fixtures under `tests/fixtures/css/` via `make test-css`.
+Pure, allocation-free (caller-provided `struct capy_css_stylesheet` arena),
+deterministic and fail-closed; no network, filesystem, clock or RNG. **Status:**
+implemented and host-testable; cascade onto the DOM and value semantics are the
+next M2 step.
+
+Entry point:
+
+- `capy_css_parse(css, css_len, out)` - parse into rules; always resets `*out`;
+  returns `CAPY_CSS_OK` or `CAPY_CSS_ERR_NULL`.
+
+Supported selector subset (one simple selector per comma-separated entry):
+
+- universal `*`, type `tag` (lower-cased), class `.name`, id `#name` (class/id
+  names keep case to match HTML class/id values);
+- comma lists are expanded so each rule carries exactly one selector, in source
+  order (used later for cascade tie-breaking).
+
+Declarations are stored generically as `property: value` pairs (property
+lower-cased; value raw and end-trimmed); the cascade interprets the known
+property subset. The parser attaches no value semantics yet.
+
+Deterministic tolerant rules:
+
+- block comments and whitespace are skipped; an unclosed comment or block warns;
+- at-rules (`@media`, ...) are skipped whole with `AT_RULE_SKIPPED`;
+- unsupported selectors (compound, descendant, combinator, attribute, pseudo)
+  are dropped with `SELECTOR_SKIPPED`; malformed declarations with
+  `DECL_SKIPPED`; recovery is reproducible byte-for-byte.
+
+Limits (alpha, configurable): input `<= CAPY_CSS_MAX_INPUT` (256 KiB); rules
+`CAPY_CSS_MAX_RULES` (256); declarations `CAPY_CSS_MAX_DECLS` (1024); string
+arena `CAPY_CSS_STRING_ARENA` (32 KiB). Over-budget input/rules/declarations/
+strings set `out->truncated` and the matching budget warning.
+
+Warnings (`enum capy_css_warning`, fixed canonical order): `INPUT_TRUNCATED`,
+`RULE_BUDGET`, `DECL_BUDGET`, `STRING_BUDGET`, `AT_RULE_SKIPPED`,
+`SELECTOR_SKIPPED`, `DECL_SKIPPED`, `UNCLOSED_BLOCK`, `UNCLOSED_COMMENT`.
+
+## CSS cascade surface (Fase M2, part 2) - implemented (host-testable)
+
+The cascade matches the parsed stylesheet onto the Fase M1 DOM and computes, fo
+every node, a computed style over a documented property subset. Lives in
+`src/css/` (`cascade.{c,h}`), exercised by golden fixtures unde
+`tests/fixtures/cascade/` via `make test-cascade`. Pure, allocation-free
+(caller-provided `struct capy_css_cascade` arena sized to the DOM node pool),
+deterministic; no network, filesystem, clock or RNG.
+
+Entry point:
+
+- `capy_css_cascade(dom, sheet, out)` - fills one computed style per DOM node;
+  always resets `*out`; returns `CAPY_CSS_CASCADE_OK` o
+  `CAPY_CSS_CASCADE_ERR_NULL`. Computed values are ranges into `sheet->strings`.
+
+Matching and specificity:
+
+- a simple selector matches by tag (type), a `class` token (space-separated,
+  case-sensitive), `id` (case-sensitive) or `*` (any element);
+- specificity is id (100) > class (10) > type (1) > universal (0); per property
+  the winning declaration is the highest specificity, ties broken by late
+  source order (rules are applied in document order).
+
+Known property subset (additive `enum capy_css_prop`): `display`, `color`,
+`background-color`, `font-weight`, `font-style`, `text-align`,
+`text-decoration`. Inherited properties (`color`, `font-weight`, `font-style`,
+`text-align`) fall back to the parent's computed value when unset; the others
+use the initial (unset) state. Unknown properties are ignored.
+
+Determinism: same `(DOM, stylesheet)` produces the same computed style for every
+node, inheritance included. Additive: new properties append before
+`CAPY_CSS_PROP_COUNT`; existing indices never change.
+
+## Static layout surface (Fase M3, part a) - implemented (host-testable)
+
+Static block layout consuming the M1 DOM and M2 computed styles, producing a box
+tree with geometry - the input to the display-list emitter (Fase M3, part b).
+Lives in `src/layout/` (`layout.{c,h}`), exercised by golden fixtures unde
+`tests/fixtures/layout/` via `make test-layout`. Pure, allocation-free
+(caller-provided `struct capy_layout_tree` arena), deterministic, fail-closed;
+no network, filesystem, clock or RNG.
+
+Entry point:
+
+- `capy_layout(dom, sheet, casc, viewport_width, out)` - lays the styled
+  document into a box tree; always resets `*out`; returns `CAPY_LAYOUT_OK` o
+  `CAPY_LAYOUT_ERR_NULL`.
+
+Model (a deliberately simple first layout):
+
+- vertical block flow: every rendered element is a block box that stacks its
+  children and spans the parent content width;
+- `display: none` (from the cascade) removes an element and its subtree;
+- text nodes collapse ASCII whitespace and greedy-wrap to the content width,
+  each becoming a text box whose height is its line count;
+- no inline flow, margins/padding/borders, floats or positioning yet (additive);
+- geometry is in abstract cells (1 column wide, 1 line tall) - a deterministic,
+  font-independent monospace approximation; real pixel metrics arrive with a
+  font backend.
+
+Limits (alpha, configurable): boxes `CAPY_LAYOUT_MAX_BOXES` (2048); nesting
+`CAPY_LAYOUT_MAX_DEPTH` (128). Over-budget sets `out->truncated` and a warning
+(`enum capy_layout_warning`: `BOX_BUDGET`, `DEPTH_LIMIT`).
+
+Determinism: same `(DOM, stylesheet, computed styles, viewport width)` produces
+the same box tree (kinds, geometry, ordering). Additive: new box kinds, box
+fields and warnings append; existing ones never change meaning.
+
+## Display-list surface (Fase M3, part b) - implemented (host-testable)
+
+The display-list emitter walks the M3a box tree (with M2 computed styles and the
+M1 DOM) and produces a flat, ordered, **versioned** list of draw nodes plus the
+scroll extent - the compositor-independent data the CapyOS render backend will
+consume. Lives in `src/displaylist/` (`display_list.{c,h}`), exercised by golden
+fixtures under `tests/fixtures/display-list/` via `make test-displaylist`. Pure,
+allocation-free (caller-provided `struct capy_dl` arena), deterministic,
+fail-closed; no network, filesystem, clock, RNG or image decode (placeholders).
+
+Entry point:
+
+- `capy_displaylist(dom, sheet, casc, layout, base_url, out)` - emits the list;
+  always resets `*out`; returns `CAPY_DL_OK` or `CAPY_DL_ERR_NULL`. `base_url`
+  (may be NULL) resolves link hrefs through Fase C1.
+
+Versioning: `out->version` is `CAPY_DL_VERSION` (currently 1). The schema is
+**additive** - new node kinds, node fields and warnings append; existing ones
+never change meaning or numbering.
+
+Node kinds (`enum capy_dl_node_kind`); per-element emission order is background
+first, then image/link markers, then the element's children in document order:
+
+- `RECT` - a background fill for an element with a computed `background-color`
+  (geometry = the box; payload = the color value);
+- `IMAGE` - a placeholder for an `<img>` element (geometry = the box; payload =
+  the `alt` text as an accessibility label, when present). No decode happens
+  here; pixels are a later `capy-codec-image` concern;
+- `LINK` - a link bound for an `<a>` element whose `href` resolves to an
+  absolute URL through Fase C1 (geometry = the box; payload = the resolved URL).
+  An href that cannot resolve is dropped (no node);
+- `TEXT` - a text run for a text box (geometry = the box; payload = the
+  whitespace-collapsed run text plus the computed text color when set).
+
+Scroll extent: `out->content_width` / `out->content_height` carry the laid-out
+size. Form controls and per-line text-run splitting are deferred (additive).
+
+Limits (alpha, configurable): nodes `CAPY_DL_MAX_NODES` (4096); string arena
+`CAPY_DL_STRING_ARENA` (64 KiB). Over-budget sets `out->truncated` and a warning
+(`enum capy_dl_warning`: `NODE_BUDGET`, `STRING_BUDGET`).
+
+Determinism: same `(DOM, stylesheet, computed styles, box tree, base URL)`
+produces the same node sequence, geometry and strings.
+
+## Reference host front-end (outside the `capy-browser-core` ABI)
+
+`host/` contains a reference command-line front-end ("CapyBrowse Text") that
+consumes the pure core (Fase C1 URL + Fase C2 HTML-to-text) and supplies the
+side effects the core must not perform: a local-file/stdin reader (always built)
+and an opt-in HTTPS fetch backend (libcurl, `-DCAPY_HOST_HAVE_CURL`). It lives
+outside `src/`, so the decoupling discipline is intact, and it enforces
+HTTPS-first at the adapter (a non-HTTPS fetch is refused; the core only parses
+the URL; followed redirects are restricted to HTTPS). No JavaScript is executed.
+It applies the Fase M4b session request identity to each HTTPS fetch (the minimal
+static User-Agent and the computed Referer); `--private` selects the ephemeral
+mode (no Referer sent). A response whose Content-Type is not `text/*` is treated
+as a download: the Fase M4a core derives a sanitized filename (from
+Content-Disposition or the URL path) and the bytes are written to it, fail-closed
+on a truncated transfer or a rejected verdict.
+
+It is **reference tooling, not part of the ABI**: it adds no error code, warning
+or display-list node, so it requires no cross-repo ratification. When the CapyOS
+Etapa 6 adapter lands it supersedes this front-end for the desktop; the text
+mode remains the documented fallback. Build via `make capybrowse` (offline) o
+`make capybrowse-net` (HTTPS).
+
 ## Compatibility rules
 
 - Browser outputs must be deterministic for the same input and limits.
@@ -288,13 +470,25 @@ auto-follows non-HTTPS redirects.
 | Maximum parse time per page | configurable per integration stage (alpha target: 2 s) | CapyBrowser |
 | Maximum layout depth | bounded by widget core constraints | CapyBrowser |
 | Image decode budget | bounded by `capy-codec-image` limits | CapyCodecs |
-| Maximum download size (planned) | configurable per integration stage; enforced fail-closed | CapyBrowser (enforce) + CapyOS (storage quota) |
-| Maximum derived filename length (planned) | bounded (alpha target: 255 bytes) | CapyBrowser |
+| Maximum download size | declared-length check fail-closed (M4a); stream enforcement planned | CapyBrowser (enforce) + CapyOS (storage quota) |
+| Maximum derived filename length | bounded to 255 bytes (`CAPY_DOWNLOAD_FILENAME_MAX`, M4a) | CapyBrowser |
 | Capy package payload | ≤ 1 MiB during alpha streaming-buffer window | CapyOS adapter |
 
-## Download surface (planned, additive, Etapa 7)
+## Download surface (decision core implemented; streaming additive, Etapa 7)
 
-File download is a planned additive surface. It is not active until the
+The **decision core (Fase M4, part a) is implemented and host-testable**:
+`src/download/` (`download.{c,h}`) provides `capy_download_prepare(url, base_url,
+content_disposition, content_length, max_size, out)` - a pure, deterministic,
+fail-closed function that validates the URL (HTTPS-first via Fase C1), derives
+and sanitizes the filename and enforces the size budget, returning a verdict
+(`ACCEPT`, `REJECT_URL`, `REJECT_SCHEME`, `REJECT_TOO_LARGE`,
+`REJECT_FILENAME`). Exercised by `tests/test_download.c` via `make test-download`.
+The byte streaming to a host download sink (the `download_open` /
+`download_append` / `download_close` callbacks + `download_user_data`) is now
+declared on `struct capy_host_adapter` (Fase M4d); the host implementation and
+core wiring land at Etapa 7.
+
+The streaming/runtime side is not active until the
 Etapa 7 runtime opens and the CapyOS-side adapter exists. Responsibility is
 split so CapyBrowser stays decoupled from network and filesystem.
 
@@ -325,7 +519,16 @@ Rules:
 - New error codes and callbacks are additive; no existing element changes
   semantics.
 
-## Private session surface (anonymous mode) (planned, additive, Etapa 7+)
+## Private session surface (anonymous mode) (application core implemented; transport additive, Etapa 7+)
+
+The **application-layer core (Fase M4, part b) is implemented and host-testable**:
+`src/session/` (`session.{c,h}`) provides `capy_request_identity(mode,
+current_url, target_url, out)` - a pure, deterministic function returning the
+ephemeral-storage flag, the no-automatic-third-party flag, a minimal static
+User-Agent ("CapyBrowse", no version leak) and the Referer under a
+strict-origin-when-cross-origin policy (zeroed entirely in private mode; neve
+sent on an HTTPS->non-HTTPS downgrade). Exercised by `tests/test_session.c` via
+`make test-session`. Transport-level anonymity below remains a CapyOS concern.
 
 Anonymity spans two layers. CapyBrowser owns only the application layer;
 transport-level anonymity (proxy, onion routing, private DNS) is a CapyOS
@@ -358,6 +561,19 @@ Rules:
   inputs.
 - The private-session flag and the controlled-`User-Agent` contract are
   additive host-adapter inputs; no existing surface changes semantics.
+
+## Form submission surface (Fase M4, part c) - implemented (host-testable)
+
+Static (non-scripted) form submission. Lives in `src/forms/` (`forms.{c,h}`):
+`capy_form_submit(method, action, base_url, fields, field_count, out)` is a
+pure, deterministic, fail-closed function that `application/x-www-form-
+urlencoded`-encodes the name/value fields (space -> `+`; alphanumerics and
+`*-._` kept literal; everything else `%XX` upper-hex) and builds the request:
+for GET, the action URL with its query replaced by the encoded data; for POST,
+the resolved action URL plus the encoded body and the urlencoded content type.
+HTTPS-first (the resolved action must be https; else `CAPY_FORM_ERR_SCHEME`) and
+fail-closed on overflow (`CAPY_FORM_ERR_OVERFLOW`). No I/O, no JavaScript; the
+fetch is the host's job. Exercised by `tests/test_forms.c` via `make test-forms`.
 
 ## Cross-repo ratification of planned surfaces
 

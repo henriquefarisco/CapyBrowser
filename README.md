@@ -1,8 +1,31 @@
 # CapyBrowser
 
-Version: 0.3.0
+Version: 0.5.0
 
 CapyBrowser owns browser-side portable components that can be validated outside the CapyOS kernel tree.
+
+## Reference host app (CapyBrowse Text)
+
+`host/` holds a decoupled reference front-end that turns the pure browser-core (URL + HTML-to-text) into a usable command-line text browser. It lives outside `src/` and supplies the side effects the core must not perform itself (HTTPS fetch, file read), so the decoupling contract holds and no JavaScript runs.
+
+Offline build (render a local file or stdin; no external dependencies):
+
+```sh
+make capybrowse
+build/capybrowse --file page.html
+cat page.html | build/capybrowse -
+```
+
+HTTPS build (opt-in; requires libcurl; HTTPS-first, non-HTTPS refused):
+
+```sh
+make capybrowse-net
+build/capybrowse https://example.com
+build/capybrowse https://example.com -i        # links + 'b' back, 'q' quit
+build/capybrowse https://example.com --page 20 # paginate long pages
+build/capybrowse https://example.com --private # ephemeral: minimal UA, no Refere
+build/capybrowse https://example.com/file.pdf  # non-HTML is saved as a download
+```
 
 ## Validation
 

@@ -3,8 +3,8 @@
 **Status:** proposta de planejamento de produto/engenharia. Subordinada
 aos documentos de contrato; não altera ABI nem limites até ser refletida
 em `compatibility.md` e na matriz cross-repo do CapyOS.
-**Versão atual:** `0.3.0` (release que entrega C1+C2+C3+M1; alvo de versão da fase M1).
-**Pin CapyOS:** `0.8.0-alpha.262+20260602` (ver [`compatibility.md`](compatibility.md)).
+**Versão atual:** `0.5.0` (consolida sobre o `0.3.0`: front-end host H1, M2 CSS parse/cascade, M3 layout + display-list e M4 download/sessão privada/forms — com download e `--private` ligados no `capybrowse`; M4d streaming/flags do adapter e Etapas 6-7 seguem pendentes).
+**Pin CapyOS:** `0.8.0-alpha.263+20260606` (ver [`compatibility.md`](compatibility.md)).
 **Política local:** este computador é **somente leitura/edição**. Todo gate
 (`make validate`, `make package`, golden fixtures de host, smokes do CapyOS)
 é executado **externamente** por humano ou CI.
@@ -82,7 +82,7 @@ grandes problemas" é meta de **longo prazo** e fica atrás da Etapa 12 (JS).
 | **C3** | Adapter de codec de imagem | `0.2.x` | 6→7 | Pipeline de imagem real (PNG/JPEG/WebP via CapyCodecs) |
 | **M1** | Parser HTML tolerante (DOM-like) | `0.3.0` | 7 (prep) | Estrutura para layout |
 | **M2** | Subset de CSS + cascade | `0.3.x` | 7 (prep) | Estilo básico determinístico |
-| **M3** | Layout estático + display-list | `0.4.0` | 7 (alvo) | Página gráfica estática com texto+imagem+links |
+| **M3** | Layout estático + display-list | `0.5.0` | 7 (alvo) | Página gráfica estática com texto+imagem+links |
 | **M4** | Forms + **download** + base de **modo anônimo** | `0.5.0` | 7 | Navegar, enviar forms simples, baixar arquivos |
 | **—** | Estabilização da ABI v1 | `1.0.0` | 7 integrada | `capy-browser-core` v1 estável + gates externos |
 | **L1** | Performance, streaming, mais CSS | `1.x` | pós-7 | Páginas estáticas maiores e mais rápidas |
@@ -215,6 +215,44 @@ surface").
 (C2), com URL robusto (C1) e pipeline de imagem pronto para a fase gráfica (C3).
 Ainda **sem** download e **sem** página gráfica — esses vêm no médio prazo.
 
+### Fase H1 — Front-end host de referência ("CapyBrowse Text" CLI) — em desenvolvimento
+
+**Status:** **em desenvolvimento (esta entrega)**. Caminho escolhido para
+**disponibilizar já um app usável** ao usuário sem depender da abertura das
+Etapas 6-7 do CapyOS. Vive em `host/`, **fora de `src/`**, e é **tooling de
+referência — não faz parte da ABI** `capy-browser-core` (não adiciona código de
+erro, warning nem nó de display-list).
+
+**Objetivo:** transformar o core puro (C1 URL + C2 HTML→texto) num navegador de
+texto de linha de comando real e estável, num SO host normal (Linux/macOS).
+
+**Entregáveis:**
+- `host/capy_host.h` — superfície de fetch/leitura do host (fora da ABI).
+- `host/fetch.c` — leitura de arquivo local/stdin (sempre disponível, zero deps)
+  + backend HTTPS opt-in via libcurl (`-DCAPY_HOST_HAVE_CURL`), HTTPS-first e
+  redirects restritos a https.
+- `host/capybrowse.c` — CLI: valida/normaliza a URL via C1, faz fetch, renderiza
+  via C2 (título, corpo, links numerados, warnings), navega por número de link,
+  com histórico/voltar (`b`) e paginação opcional (`--page`).
+- `Makefile` — alvos `make capybrowse` (offline) e `make capybrowse-net` (HTTPS);
+  o build offline entra em `all` e `validate` (cobertura de compilação).
+- `host/fetch.c` expõe `capy_host_prepare_url` (preparação pura de URL,
+  HTTPS-first, fail-closed); o CLI ganha `--max-bytes` e `--page` (paginação).
+- `tests/test_host.c` — teste host-side da preparação de URL (assume https;
+  rejeita http/ftp/espaço/host vazio/cap pequeno); alvo `make test-host`
+  ligado a `all`/`validate`.
+
+**Regras:** todo efeito colateral mora no host (nunca em `src/`); HTTPS-first
+aplicado no adapter (não-HTTPS recusado); nenhum JS; o modo texto é o produto.
+**Contrato/ABI:** **sem mudança de ABI** — é consumidor de C1+C2. Logo, **não
+exige ratificação cross-repo**. Quando a Etapa 6 do CapyOS abrir, o adapter do
+CapyOS assume o desktop e este front-end vira ferramenta de referência/diagnóstico
+(o modo texto permanece como fallback).
+**Gates externos:** `make validate` (inclui o build offline do host); `make
+capybrowse-net` com libcurl para o caminho HTTPS; smoke manual de fetch HTTPS +
+render de uma página real.
+**Mapeia para:** "disponibilizar já um app estável" (texto), seguro, sem JS.
+
 ---
 
 ## 5. MÉDIO PRAZO — navegador gráfico estático, download e base de anonimato
@@ -250,25 +288,26 @@ builder HTML5 completo (sem inserção de tags implícitas nem adoption agency) 
 **documentado** (sem JS, sem CSS dinâmico).
 
 **Entregáveis:**
-- `src/css/css_tokenize.c`, `src/css/css_parse.c`, `src/css/cascade.c`.
-- Documentar o subset de CSS suportado em `compatibility.md`.
-- `tests/test_css.c` + golden fixtures.
+- [feito] `src/css/css_parse.{c,h}` — lexer+parser tolerante (subset de seletores simples + declarações `name:value` em arena, fail-closed, determinístico); tokenizer e parser num só arquivo.
+- [feito] `src/css/cascade.{c,h}` — casa regras na DOM (M1) por especificidade + ordem de fonte, com herança; `tests/test_cascade.c` + golden em `tests/fixtures/cascade/` (`make test-cascade`, ligado a `all`/`validate`).
+- [feito] subset de CSS documentado em `compatibility.md` ("CSS parse surface").
+- [feito] `tests/test_css.c` + golden em `tests/fixtures/css/` (`make test-css`, ligado a `all`/`validate`).
 
 **Subset inicial sugerido:** box model básico, tipografia, cor, display
 block/inline, margens/padding/border simples, largura/altura. (Flexbox/grid
 ficam para o longo prazo.)
 **Critério de saída:** cascade determinístico; subset documentado; golden de specificity/herança.
 
-### Fase M3 — Layout estático + display-list (`0.4.0`) — alvo da Etapa 7
+### Fase M3 — Layout estático + display-list (`0.5.0`) — alvo da Etapa 7
 
 **Objetivo:** emitir a **display-list independente de compositor** que o
 CapyOS desenha — primeira página **gráfica**.
 
 **Entregáveis:**
-- `src/layout/box.c`, `src/layout/layout.c` — layout estático com profundidade limitada.
-- `src/displaylist/display_list.h` — **schema versionado** (`display_list_version`).
-- `src/displaylist/display_list_emit.c`.
-- `tests/test_layout.c`, `tests/test_displaylist.c` + golden fixtures.
+- [feito] (parte a) `src/layout/layout.{c,h}` — block flow vertical determinístico (consome M1 DOM + M2 `display:none`), wrap de texto em células, fail-closed (box/depth budgets).
+- [feito] (parte b) `src/displaylist/display_list.{c,h}` — **schema versionado** (`CAPY_DL_VERSION`) + emissor; consome a árvore de caixas da parte a + estilo (M2) + DOM, resolve href via C1; nós text/rect/image/link + scroll extent.
+- [feito] (parte b) `tests/test_displaylist.c` + golden em `tests/fixtures/display-list/` (`make test-displaylist`, ligado a `all`/`validate`).
+- [feito] `tests/test_layout.c` + golden em `tests/fixtures/layout/` (`make test-layout`, ligado a `all`/`validate`).
 
 **Tipos de nó iniciais (aditivos):** text runs; rectangles; image
 placeholders (bytes via `capy-codec-image`); link bounds (com URL resolvida);
@@ -287,9 +326,9 @@ usuário (que na prática cai aqui, por depender de adapters) e plantar a base
 de privacidade.
 
 **Entregáveis:**
-- Form controls estáticos e submit simples (GET/POST) via callback de fetch (sem JS).
-- **Superfície de download** (ver §6.1): resolução/validação de URL, parse de `Content-Disposition`, sanitização determinística de nome de arquivo, limites de tamanho, streaming para um *download sink* fornecido pelo host (o CapyOS grava o arquivo).
-- **Base de modo anônimo** (ver §6.2): sessão efêmera (sem cookies/cache persistentes via flags no adapter), User-Agent mínimo e estático, minimização/zeragem de Referer, sem requests de terceiros automáticos.
+- **Submit de form** (sem JS): [feito] (parte c) `src/forms/forms.{c,h}` — `capy_form_submit` codifica `application/x-www-form-urlencoded` e monta o request (GET = query na action via C1; POST = body + content-type), HTTPS-first, fail-closed em overflow; `tests/test_forms.c` (`make test-forms`). [pendente] controles de form na DOM/layout/display-list e o disparo via callback de fetch do host.
+- **Superfície de download** (ver §6.1): [feito] (parte a) `src/download/download.{c,h}` — `capy_download_prepare` valida URL (HTTPS-first via C1), parseia `Content-Disposition` (`filename`/`filename*`), deriva+sanitiza o nome (basename, sem traversal/controle, ≤255), checa tamanho declarado; verdict determinístico fail-closed; `tests/test_download.c` (`make test-download`). [feito] (parte d) interface do *download sink* (`download_open`/`append`/`close` + `download_user_data`) declarada (aditiva) em `src/adapter/host_adapter.h`; [pendente] implementação host + wiring de streaming no core (Etapa 7), quando o CapyOS grava o arquivo.
+- **Base de modo anônimo** (ver §6.2): [feito] `src/session/session.{c,h}` — `capy_request_identity` computa a identidade de request (flag efêmera, sem terceiros automáticos, User-Agent mínimo/estático sem version leak, Referer strict-origin-when-cross-origin / zerado em modo privado / sem downgrade HTTPS→HTTP); `tests/test_session.c` (`make test-session`). [feito] (parte d) flags `ephemeral_session`/`block_third_party` declaradas (aditivas) em `src/adapter/host_adapter.h`; [pendente] o host honrar as flags + transporte anônimo (proxy/onion/DNS) do CapyOS.
 **Contrato/ABI:** adiciona superfícies de **download** e **flags de privacidade** ao host adapter (aditivo). Requer atualização cross-repo (§9).
 **Gates externos:** golden de sanitização de nome/Content-Disposition; fail-closed em non-HTTPS e path traversal; coordenação com adapter CapyOS de fs/rede.
 **Dependências:** adapters de rede + filesystem do CapyOS (Etapa 7), cookie/cache hooks do CapyOS.
@@ -456,7 +495,7 @@ Nunca empurrar bump breaking sem a auditoria e a linha de matriz no mesmo change
 Concluídos neste change:
 
 - [feito] `SECURITY.md` — removida a referência fixa de versão ("0.0.3") para evitar drift futuro (agora aponta para `VERSION`).
-- [feito] Skill `capybrowser-project-map` — alinhado a `0.3.0` / pin `0.8.0-alpha.262+20260602`.
+- [feito] Skill `capybrowser-project-map` — alinhado a `0.5.0` / pin `0.8.0-alpha.263+20260606`.
 - [feito] Versão centralizada no `Makefile` — `VERSION_STR := $(shell cat VERSION)`; `version-check` confere `README.md` contra `VERSION`; literal `0.0.5` removido de `lint`/`version-check`.
 - [feito] `docs/README.md` referencia este roadmap.
 - [feito] `Makefile` alinhado a `compatibility.md`: `make package STAGE=text|core` emite o nome canônico por etapa (`org.capyos.browser.text` na Etapa 6, `org.capyos.browser.core` na Etapa 7; default `core`), com guard fail-closed para `STAGE` inválido.

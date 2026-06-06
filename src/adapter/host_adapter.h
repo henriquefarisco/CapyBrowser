@@ -10,9 +10,9 @@
  * core consumes; CapyOS implements them (e.g. routing image decode to the
  * capy-codec-image ABI owned by CapyCodecs).
  *
- * Fase C3 introduces the image-decode part of the adapter. Network/cache/cookie
- * callbacks are added additively in later phases; existing fields never change
- * meaning.
+ * Fase C3 introduces the image-decode part of the adapter; Fase M4d adds the
+ * download sink + privacy flags. Network/cache/cookie callbacks are added
+ * additively in later phases; existing fields never change meaning.
  */
 
 #include <stddef.h>
@@ -42,6 +42,28 @@ typedef int (*capy_host_decode_image_fn)(const uint8_t *data, size_t len,
 typedef void (*capy_host_release_image_fn)(struct capy_rgba_image *image,
                                            void *user_data);
 
+/*
+ * Streaming download sink (Fase M4d). The host owns the filesystem; the
+ * browser-core download surface (Fase M4a) has already validated the URL
+ * (HTTPS-first) and produced a sanitized, path-component-free filename. The
+ * host opens a destination, receives the bytes in order, then finalizes.
+ *
+ * Protocol: download_open returns an opaque non-NULL handle on success, or NULL
+ * on failure. download_append is then called zero or more times with
+ * consecutive chunks; it returns 0 to continue or negative to abort the
+ * transfer. download_close finalizes (ok != 0) or discards (ok == 0) the
+ * destination and releases the handle. total_size_hint is the declared length,
+ * or 0 if unknown. Implementations must not block on network and must be
+ * deterministic with respect to the bytes delivered.
+ */
+typedef void *(*capy_host_download_open_fn)(const char *filename,
+                                            uint64_t total_size_hint,
+                                            void *user_data);
+typedef int (*capy_host_download_append_fn)(void *handle, const uint8_t *data,
+                                            size_t len, void *user_data);
+typedef void (*capy_host_download_close_fn)(void *handle, int ok,
+                                            void *user_data);
+
 struct capy_host_adapter {
   /*
    * Image codec hooks (capy-codec-image), injected by the host. decode_image
@@ -60,7 +82,27 @@ struct capy_host_adapter {
   uint32_t max_image_width;
   uint32_t max_image_height;
 
-  /* Future, additive: network fetch, cache/cookie, resource-limit hooks. */
+  /*
+   * Download sink (Fase M4d), injected by the host. All three are NULL when
+   * downloads are unsupported; the core then refuses a download fail-closed.
+   * download_open/append/close form one transfer (see the typedefs above).
+   */
+  capy_host_download_open_fn download_open;
+  capy_host_download_append_fn download_append;
+  capy_host_download_close_fn download_close;
+  void *download_user_data;
+
+  /*
+   * Privacy flags (Fase M4b) the host must honour. Default 0 = a normal,
+   * non-ephemeral session with third-party loads allowed, so a zero-initialized
+   * adapter preserves the prior behavior. The application's session mode sets
+   * these; the host's cache/cookie/network hooks (added additively later) must
+   * respect them.
+   */
+  int ephemeral_session; /* 1 = do not persist cookies/cache */
+  int block_third_party; /* 1 = no automatic third-party loads */
+
+  /* Future, additive: network fetch, cache/cookie hooks. */
 };
 
 #endif /* CAPY_HOST_ADAPTER_H */
