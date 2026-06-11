@@ -7,11 +7,11 @@ on CapyOS runtime internals.
 
 ## CapyOS reference version
 
-- CapyOS core pinned for this contract: `0.8.0-alpha.263+20260606`
+- CapyOS core pinned for this contract: `0.8.0-alpha.265+20260611`
 - Authoritative cross-repo matrix: [`CapyOS/docs/reference/integration/compatibility-matrix.md`](../../CapyOS/docs/reference/integration/compatibility-matrix.md)
 - Canonical manifest format consumed by the in-tree adapter: [`CapyOS/docs/reference/integration/capypkg-publisher-manifest-format.md`](../../CapyOS/docs/reference/integration/capypkg-publisher-manifest-format.md)
 - Manual deploy runbook: [`CapyOS/docs/operations/manual-module-deploy-runbook.md`](../../CapyOS/docs/operations/manual-module-deploy-runbook.md)
-- Current cross-repo audit: [`CapyOS/docs/reference/integration/compatibility-audit-2026-06-06.md`](../../CapyOS/docs/reference/integration/compatibility-audit-2026-06-06.md)
+- Current cross-repo audit: [`CapyOS/docs/reference/integration/compatibility-audit-2026-06-11.md`](../../CapyOS/docs/reference/integration/compatibility-audit-2026-06-11.md)
 
 ## Authoritative CapyOS references
 
@@ -22,8 +22,9 @@ on CapyOS runtime internals.
 
 ## Owned ABI
 
-CapyBrowser owns the `capy-browser-core` ABI (v1 planned; not yet
-runtime-active — runtime integration gated by Etapas 6-7).
+CapyBrowser owns the `capy-browser-core` ABI. The Etapa 6 text subset is
+published in `v0.6.0` as a package handoff for CapyOS Slice 6.4; graphical
+runtime integration remains gated by Etapa 7.
 
 This ABI covers:
 
@@ -630,7 +631,25 @@ CapyBrowser integration is gated by Etapas 6-7. Text-mode core
 lands first (Etapa 6) and is preserved as a fallback when graphical
 browsing arrives (Etapa 7).
 
-## Publishing as a Capy package (future, when Etapas 6-7 open)
+## Etapa 6 publication handoff (`v0.6.0`)
+
+`v0.6.0` is the explicit handoff release for CapyOS Etapa 6 / Slice 6.4. It
+publishes the text-mode package identity and manifest contract that the CapyOS
+adapter can consume without waiting for image codecs or the graphical browser:
+
+- package: `org.capyos.browser.text`;
+- command: `make package STAGE=text`;
+- payload URL base: GitHub release `v0.6.0`;
+- dependency line: `depends=` (empty by design);
+- owned surfaces: URL parse/normalize/origin, HTML-to-text, link extraction and
+  deterministic error/warning model;
+- non-owned surfaces: DNS/TCP/TLS/HTTP fetch, filesystem, window/input/render,
+  sandbox and lifecycle, all supplied by CapyOS adapters.
+
+The graphical package remains `org.capyos.browser.core` (`STAGE=core`) and keeps
+the `org.capyos.codecs.image-basic` dependency for Etapa 7.
+
+## Publishing as a Capy package
 
 When CapyBrowser is delivered as a remote module to the CapyOS
 `services/capypkg` adapter, the publisher must follow
@@ -647,9 +666,9 @@ The key requirements that affect CapyBrowser are:
 - `install_root` must live under `/var/capypkg` or `/opt/`;
 - the Ed25519 signature must cover the canonical descriptor
   `name=N|version=V|payload_sha256=H|payload_url=U\n`;
-- `depends` must declare `org.capyos.codecs.image-basic` (or the
-  active `capy-codec-image` package name) when image rendering is
-  enabled.
+- `depends` is empty for `STAGE=text`; it must declare
+  `org.capyos.codecs.image-basic` (or the active `capy-codec-image` package
+  name) when image rendering is enabled.
 
 Until CapyAgent publishes its Ed25519 signer, CapyBrowser cannot be
 installed from a `signed` repository in production; lab tests with

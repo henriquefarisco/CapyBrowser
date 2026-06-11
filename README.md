@@ -1,6 +1,6 @@
 # CapyBrowser
 
-Version: 0.5.0
+Version: 0.6.0
 
 CapyBrowser owns browser-side portable components that can be validated outside the CapyOS kernel tree.
 
@@ -34,6 +34,13 @@ make validate
 ```
 
 The release gate compiles with strict C warnings, runs codec contract tests, checks release metadata and verifies hardened compile flags.
+
+## CapyOS handoff
+
+`v0.6.0` is the Etapa 6 publication handoff for the text package:
+`make package STAGE=text` emits `org.capyos.browser.text` without image codec
+dependencies. The graphical `STAGE=core` package remains Etapa 7-gated and
+keeps the `org.capyos.codecs.image-basic` dependency.
 
 ## Packaging
 

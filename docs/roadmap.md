@@ -3,8 +3,10 @@
 **Status:** proposta de planejamento de produto/engenharia. Subordinada
 aos documentos de contrato; não altera ABI nem limites até ser refletida
 em `compatibility.md` e na matriz cross-repo do CapyOS.
-**Versão atual:** `0.5.0` (consolida sobre o `0.3.0`: front-end host H1, M2 CSS parse/cascade, M3 layout + display-list e M4 download/sessão privada/forms — com download e `--private` ligados no `capybrowse`; M4d streaming/flags do adapter e Etapas 6-7 seguem pendentes).
-**Pin CapyOS:** `0.8.0-alpha.263+20260606` (ver [`compatibility.md`](compatibility.md)).
+**Versão atual:** `0.6.0` (handoff de publicação da Etapa 6: pacote
+`org.capyos.browser.text` sem dependência de codec de imagem, preservando o
+core gráfico `org.capyos.browser.core` para a Etapa 7).
+**Pin CapyOS:** `0.8.0-alpha.265+20260611` (ver [`compatibility.md`](compatibility.md)).
 **Política local:** este computador é **somente leitura/edição**. Todo gate
 (`make validate`, `make package`, golden fixtures de host, smokes do CapyOS)
 é executado **externamente** por humano ou CI.
@@ -46,8 +48,9 @@ Estes pontos não são negociáveis em nenhuma fase e limitam o que é possível
 7. **Parser tolerante mas determinístico.** Recupera de HTML malformado sem
    abortar, e a recuperação é reproduzível byte a byte.
 8. **Gating por Etapa.** O runtime do navegador depende das Etapas 6-7 do
-   CapyOS (hoje na **Etapa 4**). O roadmap entrega código host-testável
-   **antes** das Etapas abrirem; a integração só ocorre quando elas abrem.
+   CapyOS (Etapa 6 ativa desde `alpha.264`). O roadmap entrega código
+   host-testável antes da integração; a ativação no CapyOS ocorre apenas por
+   adaptador versionado e gate externo.
 
 ---
 
@@ -203,7 +206,10 @@ surface").
 **Regras:**
 - CapyBrowser **não decodifica** imagem; só pede ao codec via callback.
 - Falha de decode é não-fatal: placeholder + warning; a página ainda renderiza.
-- Quando imagem é habilitada, o manifesto declara `depends=org.capyos.codecs.image-basic` (já presente no `Makefile`).
+- Quando imagem é habilitada (`STAGE=core`, Etapa 7), o manifesto declara
+  `depends=org.capyos.codecs.image-basic`. O pacote textual da Etapa 6
+  (`STAGE=text`) emite `depends=` vazio para não bloquear o consumo do
+  HTML-to-text em codecs de imagem.
 
 **Contrato/ABI:** adiciona o callback de codec ao host adapter; sem novo decoder próprio.
 **Gates externos:** `make validate`; checagem de declaração de dependência de codec; auditoria "sem includes diretos do CapyOS".
@@ -495,10 +501,10 @@ Nunca empurrar bump breaking sem a auditoria e a linha de matriz no mesmo change
 Concluídos neste change:
 
 - [feito] `SECURITY.md` — removida a referência fixa de versão ("0.0.3") para evitar drift futuro (agora aponta para `VERSION`).
-- [feito] Skill `capybrowser-project-map` — alinhado a `0.5.0` / pin `0.8.0-alpha.263+20260606`.
+- [feito] Skill `capybrowser-project-map` — alinhado a `0.6.0` / pin `0.8.0-alpha.265+20260611`.
 - [feito] Versão centralizada no `Makefile` — `VERSION_STR := $(shell cat VERSION)`; `version-check` confere `README.md` contra `VERSION`; literal `0.0.5` removido de `lint`/`version-check`.
 - [feito] `docs/README.md` referencia este roadmap.
-- [feito] `Makefile` alinhado a `compatibility.md`: `make package STAGE=text|core` emite o nome canônico por etapa (`org.capyos.browser.text` na Etapa 6, `org.capyos.browser.core` na Etapa 7; default `core`), com guard fail-closed para `STAGE` inválido.
+- [feito] `Makefile` alinhado a `compatibility.md`: `make package STAGE=text|core` emite o nome canônico por etapa (`org.capyos.browser.text` na Etapa 6, `org.capyos.browser.core` na Etapa 7; default `core`), com guard fail-closed para `STAGE` inválido; `STAGE=text` não declara dependência de codec, `STAGE=core` declara `org.capyos.codecs.image-basic`.
 - [feito] Diretórios de fixtures por superfície (`tests/fixtures/{url,html-to-text,display-list,malformed}/`) com `tests/fixtures/README.md` definindo a convenção golden (`*.in`/`*.base`/`*.out`/`*.warn`, determinística e fail-closed).
 - [feito] Harness determinístico header-only: `tests/harness/capy_determinism.h` (PRNG splitmix64 semeada + relógio monotônico injetado) e `tests/harness/capy_test.h` (asserções + comparação golden de bytes), com self-test `tests/test_harness.c` ligado a `make test-harness` / `make validate`.
 
