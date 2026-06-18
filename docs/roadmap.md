@@ -167,8 +167,9 @@ conteúdo em texto, com links numerados navegáveis. Sem JS, sem recurso externo
 - [feito] `src/text/html_entities.{c,h}` — decode de entidades nomeadas/decimais/hex + encode UTF-8.
 - [feito] `src/text/html_tokenizer.{c,h}` — tokenizer tolerante (rawtext para script/style/title/textarea; captura de `href`); reutilizável pelo parser DOM (M1).
 - [feito] `src/text/text_emit.c` + `src/text/html_text.h` — título, blocos normalizados, links numerados resolvidos via C1, warnings determinísticos e truncamento.
-- [feito] `tests/test_text.c` (runner por fixtures: `.in/.base/.out/.title/.links/.warn`) e 13 casos golden em `tests/fixtures/html-to-text/` (título, blocos, entidades, links resolvidos/relativos, script/style descartados, comentários, br/listas, whitespace, e recuperação de malformado/unclosed).
+- [feito] `tests/test_text.c` (runner por fixtures: `.in/.base/.out/.title/.links/.warn`) e 18 casos golden em `tests/fixtures/html-to-text/` (título, blocos, entidades, refs numéricas C1/Windows-1252, refs NULL/surrogate/fora-de-faixa → U+FFFD, links resolvidos/relativos, script/style descartados, comentários, br/listas com marcadores (`-`/`N.`), whitespace, `<pre>` pre-formatado, e recuperação de malformado/unclosed).
 - [feito] `Makefile` — alvo `test-text` em `all`/`validate`; `lint`/`security` cobrem `src/text/`.
+- [feito] Refinamento aditivo de entidades: referências de caractere numéricas no intervalo C1 (`&#128;`–`&#159;` / `&#x80;`–`&#x9F;`) seguem o remapeamento WHATWG para a pontuação Windows-1252 pretendida (ex.: `&#151;` → em dash U+2014, `&#147;`/`&#148;` → aspas duplas curvas U+201C/U+201D, `&#128;` → sinal de euro U+20AC); os cinco valores sem atribuição Windows-1252 (`&#129;`, `&#141;`, `&#143;`, `&#144;`, `&#157;`) são descartados como controles C1 inválidos com `ENTITY_INVALID`, de modo que corpo/título nunca carreguem caracteres de controle C1. Antes, esses refs emitiam o byte de controle C1 cru (mojibake) sem warning.
 
 **Saída (conforme contrato):** título; blocos de texto normalizados; links
 numerados com URL resolvida; warnings de parse; status de truncamento.

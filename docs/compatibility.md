@@ -143,6 +143,25 @@ Deterministic rules:
 - whitespace runs collapse to a single space and blocks are trimmed; common
   named, decimal and hex entities are decoded to UTF-8; `&nbsp;` collapses to a
   space;
+- preformatted text (`<pre>`) preserves its spaces, tabs and newlines verbatim
+  (CRLF is normalized to LF; a single leading newline right after `<pre>` is
+  dropped per the HTML rule); entities still decode inside `<pre>`;
+- list items (`<li>`) render with a leading marker: `- ` inside `<ul>` and a
+  1-based `N. ` inside `<ol>`, indented two spaces per nesting level (bounded
+  depth; a stray `<li>` with no open list falls back to a bullet);
+- numeric character references in the C1 range (`&#128;`–`&#159;` /
+  `&#x80;`–`&#x9F;`) follow the WHATWG numeric-reference remap to the intended
+  Windows-1252 punctuation (e.g. `&#151;` → em dash U+2014, `&#147;`/`&#148;` →
+  curly double quotes U+201C/U+201D, `&#128;` → euro sign U+20AC); the five
+  values with no Windows-1252 assignment (`&#129;`, `&#141;`, `&#143;`,
+  `&#144;`, `&#157;`) are dropped as invalid C1 controls with `ENTITY_INVALID`,
+  so the body and title never carry C1 control characters (named entities are
+  unaffected);
+- numeric character references that are NULL (`&#0;`), a surrogate half
+  (`&#xD800;`–`&#xDFFF;`) or out of range (above `U+10FFFF`) follow the WHATWG
+  numeric-reference end state and resolve to U+FFFD REPLACEMENT CHARACTER —
+  emitted in the body/title and flagged `ENTITY_INVALID` (a parse error)
+  rather than silently dropped;
 - links resolve via C1; an `href` that cannot resolve (e.g. relative with no
   base) is dropped from the numbered list with `LINK_UNRESOLVED`.
 

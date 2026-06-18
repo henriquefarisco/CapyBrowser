@@ -88,6 +88,46 @@ int capy_html_entity_lookup(const char *name, size_t len, uint32_t *cp) {
   return 0;
 }
 
+/* WHATWG HTML "numeric character reference end state": a numeric reference in
+ * the C1 range 0x80..0x9F is a near-universal authoring error for the matching
+ * Windows-1252 byte, so the standard maps it to the intended Unicode code
+ * point (e.g. &#151; -> U+2014 EM DASH, &#128; -> U+20AC EURO SIGN). The five
+ * values with no Windows-1252 assignment (0x81, 0x8D, 0x8F, 0x90, 0x9D) are
+ * returned unchanged; the caller then treats them as invalid C1 controls.
+ * Applies to numeric references only, never to named ones. */
+static uint32_t ent_win1252_remap(uint32_t v) {
+  switch (v) {
+    case 0x80u: return 0x20ACu; /* EURO SIGN */
+    case 0x82u: return 0x201Au; /* SINGLE LOW-9 QUOTATION MARK */
+    case 0x83u: return 0x0192u; /* LATIN SMALL LETTER F WITH HOOK */
+    case 0x84u: return 0x201Eu; /* DOUBLE LOW-9 QUOTATION MARK */
+    case 0x85u: return 0x2026u; /* HORIZONTAL ELLIPSIS */
+    case 0x86u: return 0x2020u; /* DAGGER */
+    case 0x87u: return 0x2021u; /* DOUBLE DAGGER */
+    case 0x88u: return 0x02C6u; /* MODIFIER LETTER CIRCUMFLEX ACCENT */
+    case 0x89u: return 0x2030u; /* PER MILLE SIGN */
+    case 0x8Au: return 0x0160u; /* LATIN CAPITAL LETTER S WITH CARON */
+    case 0x8Bu: return 0x2039u; /* SINGLE LEFT-POINTING ANGLE QUOTATION MARK */
+    case 0x8Cu: return 0x0152u; /* LATIN CAPITAL LIGATURE OE */
+    case 0x8Eu: return 0x017Du; /* LATIN CAPITAL LETTER Z WITH CARON */
+    case 0x91u: return 0x2018u; /* LEFT SINGLE QUOTATION MARK */
+    case 0x92u: return 0x2019u; /* RIGHT SINGLE QUOTATION MARK */
+    case 0x93u: return 0x201Cu; /* LEFT DOUBLE QUOTATION MARK */
+    case 0x94u: return 0x201Du; /* RIGHT DOUBLE QUOTATION MARK */
+    case 0x95u: return 0x2022u; /* BULLET */
+    case 0x96u: return 0x2013u; /* EN DASH */
+    case 0x97u: return 0x2014u; /* EM DASH */
+    case 0x98u: return 0x02DCu; /* SMALL TILDE */
+    case 0x99u: return 0x2122u; /* TRADE MARK SIGN */
+    case 0x9Au: return 0x0161u; /* LATIN SMALL LETTER S WITH CARON */
+    case 0x9Bu: return 0x203Au; /* SINGLE RIGHT-POINTING ANGLE QUOTATION MARK */
+    case 0x9Cu: return 0x0153u; /* LATIN SMALL LIGATURE OE */
+    case 0x9Eu: return 0x017Eu; /* LATIN SMALL LETTER Z WITH CARON */
+    case 0x9Fu: return 0x0178u; /* LATIN CAPITAL LETTER Y WITH DIAERESIS */
+    default: return v;
+  }
+}
+
 size_t capy_html_charref_at(const char *s, size_t len, uint32_t *cp) {
   if (len < 3u || s[0] != '&') {
     return 0;
@@ -125,7 +165,20 @@ size_t capy_html_charref_at(const char *s, size_t len, uint32_t *cp) {
     if (digits == 0 || i >= len || s[i] != ';') {
       return 0;
     }
-    *cp = overflow ? CAPY_CP_INVALID : v;
+    /* WHATWG numeric character reference end state: NULL (&#0;), surrogate
+       halves (U+D800..U+DFFF) and out-of-range values (> U+10FFFF) are parse
+       errors that resolve to U+FFFD. They share the CAPY_CP_INVALID sentinel,
+       which the text emitter renders as U+FFFD REPLACEMENT CHARACTER while
+       flagging ENTITY_INVALID. The C1 block (0x80..0x9F) is the Windows-1252
+       authoring-error remap and is unaffected. */
+    if (overflow || v == 0u || (v >= 0xD800u && v <= 0xDFFFu)) {
+      *cp = CAPY_CP_INVALID;
+    } else {
+      if (v >= 0x80u && v <= 0x9Fu) {
+        v = ent_win1252_remap(v);
+      }
+      *cp = v;
+    }
     return i + 1;
   }
 

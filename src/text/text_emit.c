@@ -5,6 +5,8 @@
 #include "html_entities.h"
 #include "html_tokenizer.h"
 
+#define CAPY_TEXT_LIST_NEST_MAX 8
+
 struct emit_state {
   char *buf;
   size_t cap;
@@ -15,11 +17,19 @@ struct emit_state {
   struct capy_text_doc *doc;
 
   int in_skip;     /* inside <script>/<style> */
+  int in_pre;      /* inside <pre>: preserve spaces, tabs and newlines */
+  int pre_lead;    /* pending strip of a single leading newline after <pre> */
   int in_title;    /* inside the first <title> */
   int title_seen;  /* a <title> was already captured */
   size_t title_len;
   int title_has_content;
   int title_pending_space;
+
+  int list_depth;                    /* open <ul>/<ol> nesting depth */
+  struct {
+    int ordered;                     /* 1 for <ol>, 0 for <ul> */
+    unsigned int counter;            /* 1-based item index for <ol> */
+  } list_stack[CAPY_TEXT_LIST_NEST_MAX];
 
   int cur_link_pending;              /* inside an <a> whose href resolved */
   char cur_url[CAPY_URL_MAX_LEN + 1]; /* resolved URL, committed on </a> */
@@ -112,14 +122,20 @@ static void body_emit_codepoint(struct emit_state *st, uint32_t cp) {
   size_t k;
   size_t j;
   if (cp == CAPY_CP_INVALID) {
+    /* WHATWG: a NULL / surrogate / out-of-range numeric reference resolves to
+       U+FFFD REPLACEMENT CHARACTER, still flagged as a parse error. */
     st->w_entity_invalid = 1;
+    k = capy_utf8_encode(0xFFFDu, u);
+    for (j = 0; j < k; j++) {
+      body_emit_char(st, u[j]);
+    }
     return;
   }
   if (cp_is_space(cp)) {
     body_space(st);
     return;
   }
-  if (cp < 0x20u || cp == 0x7Fu) {
+  if (cp < 0x20u || cp == 0x7Fu || (cp >= 0x80u && cp <= 0x9Fu)) {
     st->w_entity_invalid = 1;
     return;
   }
@@ -133,6 +149,22 @@ static void body_emit_codepoint(struct emit_state *st, uint32_t cp) {
   }
 }
 
+/* Emit one literal byte inside a <pre> block, bypassing whitespace
+ * collapsing. Honors a pending block newline first (so the preformatted
+ * run starts on its own line), then writes the byte verbatim. */
+static void body_emit_pre_byte(struct emit_state *st, char c) {
+  if (st->pending_newline) {
+    if (!out_raw_byte(st, '\n')) {
+      return;
+    }
+    st->pending_newline = 0;
+    st->pending_space = 0;
+  }
+  if (out_raw_byte(st, c)) {
+    st->line_has_content = (c != '\n');
+  }
+}
+
 static void body_emit_text(struct emit_state *st, const char *t, size_t n) {
   size_t i = 0;
   while (i < n) {
@@ -140,6 +172,9 @@ static void body_emit_text(struct emit_state *st, const char *t, size_t n) {
     if (c == '&') {
       uint32_t cp;
       size_t consumed = capy_html_charref_at(t + i, n - i, &cp);
+      if (st->in_pre) {
+        st->pre_lead = 0;
+      }
       if (consumed > 0) {
         body_emit_codepoint(st, cp);
         i += consumed;
@@ -150,6 +185,28 @@ static void body_emit_text(struct emit_state *st, const char *t, size_t n) {
       continue;
     }
     if (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f') {
+      if (st->in_pre) {
+        /* Preserve preformatted whitespace. CR is dropped so CRLF collapses
+           to a single LF; a lone newline right after <pre> is stripped once
+           (the HTML "leading newline in pre is ignored" rule). */
+        if (c == '\r') {
+          i++;
+          continue;
+        }
+        if (c == '\n' || c == '\f') {
+          if (st->pre_lead) {
+            st->pre_lead = 0;
+          } else {
+            body_emit_pre_byte(st, '\n');
+          }
+          i++;
+          continue;
+        }
+        st->pre_lead = 0;
+        body_emit_pre_byte(st, (char)c);
+        i++;
+        continue;
+      }
       body_space(st);
       i++;
       continue;
@@ -157,6 +214,9 @@ static void body_emit_text(struct emit_state *st, const char *t, size_t n) {
     if (c < 0x20 || c == 0x7F) {
       i++; /* drop stray control bytes */
       continue;
+    }
+    if (st->in_pre) {
+      st->pre_lead = 0;
     }
     body_emit_char(st, (char)c);
     i++;
@@ -182,14 +242,20 @@ static void title_emit_codepoint(struct emit_state *st, uint32_t cp) {
   size_t k;
   size_t j;
   if (cp == CAPY_CP_INVALID) {
+    /* WHATWG: a NULL / surrogate / out-of-range numeric reference resolves to
+       U+FFFD REPLACEMENT CHARACTER, still flagged as a parse error. */
     st->w_entity_invalid = 1;
+    k = capy_utf8_encode(0xFFFDu, u);
+    for (j = 0; j < k; j++) {
+      title_emit_char(st, u[j]);
+    }
     return;
   }
   if (cp_is_space(cp)) {
     st->title_pending_space = 1;
     return;
   }
-  if (cp < 0x20u || cp == 0x7Fu) {
+  if (cp < 0x20u || cp == 0x7Fu || (cp >= 0x80u && cp <= 0x9Fu)) {
     st->w_entity_invalid = 1;
     return;
   }
@@ -334,6 +400,65 @@ static void handle_anchor_start(struct emit_state *st,
   st->cur_link_pending = 1; /* committed to links[] only when </a> closes */
 }
 
+static void list_push(struct emit_state *st, int ordered) {
+  if (st->list_depth < CAPY_TEXT_LIST_NEST_MAX) {
+    st->list_stack[st->list_depth].ordered = ordered;
+    st->list_stack[st->list_depth].counter = 0u;
+  }
+  if (st->list_depth < 0x7fff) {
+    st->list_depth += 1;
+  }
+}
+
+static void list_pop(struct emit_state *st) {
+  if (st->list_depth > 0) {
+    st->list_depth -= 1;
+  }
+}
+
+/* Emit the leading marker for a <li>: "- " for an unordered list, "N. " for
+ * an ordered one (1-based, per innermost list), indented two spaces per
+ * nesting level. A stray <li> with no open list falls back to a bullet. */
+static void emit_list_marker(struct emit_state *st) {
+  int level = st->list_depth > 0 ? st->list_depth - 1 : 0;
+  int ordered = 0;
+  unsigned int n = 0u;
+  int i;
+  if (level > CAPY_TEXT_LIST_NEST_MAX - 1) {
+    level = CAPY_TEXT_LIST_NEST_MAX - 1;
+  }
+  if (st->list_depth > 0 && st->list_depth <= CAPY_TEXT_LIST_NEST_MAX) {
+    ordered = st->list_stack[st->list_depth - 1].ordered;
+    if (ordered) {
+      st->list_stack[st->list_depth - 1].counter += 1u;
+      n = st->list_stack[st->list_depth - 1].counter;
+    }
+  }
+  for (i = 0; i < level * 2; i++) {
+    body_emit_char(st, ' ');
+  }
+  if (ordered) {
+    char tmp[12];
+    int k = 0;
+    if (n == 0u) {
+      tmp[k++] = '0';
+    }
+    while (n > 0u && k < (int)sizeof(tmp)) {
+      tmp[k++] = (char)('0' + (int)(n % 10u));
+      n /= 10u;
+    }
+    while (k > 0) {
+      k--;
+      body_emit_char(st, tmp[k]);
+    }
+    body_emit_char(st, '.');
+    body_emit_char(st, ' ');
+  } else {
+    body_emit_char(st, '-');
+    body_emit_char(st, ' ');
+  }
+}
+
 static void handle_start(struct emit_state *st,
                          const struct capy_html_token *tok,
                          const char *base_url) {
@@ -356,6 +481,15 @@ static void handle_start(struct emit_state *st,
   }
   if (is_block_element(n)) {
     body_flush_block(st);
+    if (!tok->self_closing && strcmp(n, "pre") == 0) {
+      st->in_pre = 1;
+      st->pre_lead = 1; /* strip a single leading newline inside the block */
+    } else if (!tok->self_closing &&
+               (strcmp(n, "ul") == 0 || strcmp(n, "ol") == 0)) {
+      list_push(st, strcmp(n, "ol") == 0);
+    } else if (strcmp(n, "li") == 0) {
+      emit_list_marker(st);
+    }
   }
 }
 
@@ -380,6 +514,12 @@ static void handle_end(struct emit_state *st,
     return;
   }
   if (is_block_element(n)) {
+    if (strcmp(n, "pre") == 0) {
+      st->in_pre = 0;
+      st->pre_lead = 0;
+    } else if (strcmp(n, "ul") == 0 || strcmp(n, "ol") == 0) {
+      list_pop(st);
+    }
     body_flush_block(st);
   }
 }

@@ -1,6 +1,6 @@
 # CapyBrowser
 
-Version: 0.6.0
+Version: 0.6.1
 
 CapyBrowser owns browser-side portable components that can be validated outside the CapyOS kernel tree.
 
