@@ -45,6 +45,15 @@ static const struct capy_named_entity g_entities[] = {
     {"otilde", 245u},  {"ugrave", 249u},  {"uacute", 250u}, {"uuml", 252u},
     {"szlig", 223u},   {"Aacute", 193u},  {"Eacute", 201u}, {"Ntilde", 209u},
     {"Ouml", 214u},    {"Uuml", 220u},    {"shy", 173u},
+    {"Agrave", 192u},  {"Acirc", 194u},   {"Atilde", 195u}, {"Auml", 196u},
+    {"Aring", 197u},   {"AElig", 198u},   {"Ccedil", 199u}, {"Egrave", 200u},
+    {"Ecirc", 202u},   {"Euml", 203u},    {"Igrave", 204u}, {"Iacute", 205u},
+    {"Icirc", 206u},   {"Iuml", 207u},    {"ETH", 208u},    {"Ograve", 210u},
+    {"Oacute", 211u},  {"Ocirc", 212u},   {"Otilde", 213u}, {"Oslash", 216u},
+    {"Ugrave", 217u},  {"Uacute", 218u},  {"Ucirc", 219u},  {"Yacute", 221u},
+    {"THORN", 222u},   {"aelig", 230u},   {"eth", 240u},    {"icirc", 238u},
+    {"iuml", 239u},    {"ocirc", 244u},   {"oslash", 248u}, {"ucirc", 251u},
+    {"yacute", 253u},  {"thorn", 254u},   {"yuml", 255u},
 };
 
 size_t capy_utf8_encode(uint32_t cp, char out[4]) {
