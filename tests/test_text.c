@@ -27,6 +27,7 @@ static const char *const g_cases[] = {
     "comment-skip",
     "entities",
     "entities-latin1",
+    "entities-latin1-symbols",
     "link-unresolved",
     "links",
     "list",

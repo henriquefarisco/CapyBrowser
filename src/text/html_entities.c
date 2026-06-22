@@ -54,6 +54,11 @@ static const struct capy_named_entity g_entities[] = {
     {"THORN", 222u},   {"aelig", 230u},   {"eth", 240u},    {"icirc", 238u},
     {"iuml", 239u},    {"ocirc", 244u},   {"oslash", 248u}, {"ucirc", 251u},
     {"yacute", 253u},  {"thorn", 254u},   {"yuml", 255u},
+    /* Remaining ISO-8859-1 symbol/punctuation entities (U+00A1-U+00BF). */
+    {"iexcl", 161u},   {"curren", 164u},  {"brvbar", 166u}, {"uml", 168u},
+    {"ordf", 170u},    {"not", 172u},     {"macr", 175u},   {"sup2", 178u},
+    {"sup3", 179u},    {"acute", 180u},   {"micro", 181u},  {"cedil", 184u},
+    {"sup1", 185u},    {"ordm", 186u},    {"iquest", 191u},
 };
 
 size_t capy_utf8_encode(uint32_t cp, char out[4]) {

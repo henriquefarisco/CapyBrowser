@@ -141,8 +141,9 @@ Deterministic rules:
 - clean output: the body/title contain no control bytes other than the block
   separator `\n` (CRLF, tabs and other control bytes are normalized/dropped);
 - whitespace runs collapse to a single space and blocks are trimmed; common
-  named entities (including the full HTML4 Latin-1 accented set, e.g.
-  `&Ccedil;`/`&Atilde;`/`&Otilde;`/`&Acirc;`), decimal and hex references are
+  named entities (including the complete HTML4 Latin-1 set, e.g. the accented
+  letters `&Ccedil;`/`&Atilde;`/`&Otilde;`/`&Acirc;` and the symbol/punctuation
+  block `&iexcl;`/`&iquest;`/`&micro;`/`&sup2;`), decimal and hex references are
   decoded to UTF-8; `&nbsp;` collapses to a space;
 - preformatted text (`<pre>`) preserves its spaces, tabs and newlines verbatim
   (CRLF is normalized to LF; a single leading newline right after `<pre>` is
