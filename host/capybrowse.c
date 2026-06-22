@@ -146,7 +146,12 @@ static void render(const char *page_url, const struct capy_text_doc *doc,
   if (doc->link_count > 0) {
     printf("\nLinks:\n");
     for (i = 0; i < doc->link_count; i++) {
-      printf("  [%zu] %s\n", i + 1, doc->links[i].url);
+      if (doc->links[i].text[0] != '\0') {
+        printf("  [%zu] %s\n      %s\n", i + 1, doc->links[i].text,
+               doc->links[i].url);
+      } else {
+        printf("  [%zu] %s\n", i + 1, doc->links[i].url);
+      }
     }
   }
   if (doc->warnings.count > 0) {

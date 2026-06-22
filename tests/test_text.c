@@ -33,6 +33,7 @@ static const char *const g_cases[] = {
     "entities-html4-symbols",
     "link-unresolved",
     "links",
+    "link-text-entity",
     "list",
     "list-ordered-nested",
     "malformed-unclosed-tag",
@@ -186,6 +187,23 @@ static void run_case(struct capy_test_ctx *ctx, const char *dir,
     }
   } else {
     check(ctx, stem, "no links expected", g_doc.link_count == 0);
+  }
+
+  /* link text (optional sidecar; one expected label per line) */
+  make_path(path, sizeof(path), dir, stem, ".linktext");
+  if (read_file(path, g_aux, sizeof(g_aux)) >= 0) {
+    char *lines[LINES_MAX];
+    size_t want;
+    strip_eol(g_aux);
+    want = split_lines(g_aux, lines, LINES_MAX);
+    for (i = 0; i < g_doc.link_count && i < want; i++) {
+      int ok = (strcmp(g_doc.links[i].text, lines[i]) == 0);
+      check(ctx, stem, "link text matches .linktext", ok);
+      if (!ok) {
+        fprintf(stderr, "    linktext[%zu] got=[%s] want=[%s]\n", i,
+                g_doc.links[i].text, lines[i]);
+      }
+    }
   }
 
   /* warnings */

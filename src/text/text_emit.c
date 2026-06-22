@@ -33,6 +33,7 @@ struct emit_state {
 
   int cur_link_pending;              /* inside an <a> whose href resolved */
   char cur_url[CAPY_URL_MAX_LEN + 1]; /* resolved URL, committed on </a> */
+  size_t cur_link_text_start; /* body offset where current <a> text starts */
 
   /* deterministic warning flags */
   int w_input_trunc;
@@ -359,6 +360,35 @@ static int is_block_element(const char *n) {
   return 0;
 }
 
+static void capy_capture_link_text(struct emit_state *st,
+                                   struct capy_text_link *lk) {
+  size_t start = st->cur_link_text_start;
+  size_t end = st->len;
+  size_t n;
+  size_t i;
+  lk->text[0] = '\0';
+  if (!st->buf || end <= start) {
+    return;
+  }
+  while (start < end && st->buf[start] == ' ') {
+    start++;
+  }
+  while (end > start && st->buf[end - 1] == ' ') {
+    end--;
+  }
+  n = end - start;
+  if (n > CAPY_TEXT_LINK_TEXT_MAX) {
+    n = CAPY_TEXT_LINK_TEXT_MAX;
+    while (n > 0 && ((unsigned char)st->buf[start + n] & 0xC0u) == 0x80u) {
+      n--;
+    }
+  }
+  for (i = 0; i < n; i++) {
+    lk->text[i] = st->buf[start + i];
+  }
+  lk->text[n] = '\0';
+}
+
 static void emit_link_marker(struct emit_state *st, int num) {
   char tmp[8];
   int k = 0;
@@ -397,6 +427,7 @@ static void handle_anchor_start(struct emit_state *st,
     st->w_link_unresolved = 1;
     return;
   }
+  st->cur_link_text_start = st->len;
   st->cur_link_pending = 1; /* committed to links[] only when </a> closes */
 }
 
@@ -507,6 +538,7 @@ static void handle_end(struct emit_state *st,
   if (strcmp(n, "a") == 0) {
     if (st->cur_link_pending && st->doc->link_count < CAPY_TEXT_MAX_LINKS) {
       strcpy(st->doc->links[st->doc->link_count].url, st->cur_url);
+      capy_capture_link_text(st, &st->doc->links[st->doc->link_count]);
       st->doc->link_count += 1;
       emit_link_marker(st, (int)st->doc->link_count);
     }

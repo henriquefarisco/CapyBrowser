@@ -127,8 +127,11 @@ Output (the "CapyBrowse Text" view):
   (`out->title` / `out->has_title`);
 - **body** — normalized block text in `text_buf`; inline links appear as `[n]`
   markers;
-- **links** — `out->links[1..n]` hold the resolved, normalized absolute URLs
-  (resolved through `capy_url_parse` against `base_url`);
+- **links** — `out->links[1..n]` hold the resolved, normalized absolute URL
+  (`.url`, resolved through `capy_url_parse` against `base_url`) plus the
+  visible anchor label (`.text`: trimmed, entity-decoded UTF-8 between `<a>`
+  and `</a>`, bounded by `CAPY_TEXT_LINK_TEXT_MAX`; `""` when the anchor has
+  no text);
 - **warnings** — `out->warnings` (deterministic, one of each in enum order);
 - **truncation** — `out->truncated` plus the matching warning.
 

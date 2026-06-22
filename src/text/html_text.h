@@ -57,6 +57,7 @@ struct capy_text_warnings {
 /* A numbered link. The number is the 1-based index into the links array. */
 struct capy_text_link {
   char url[CAPY_URL_MAX_LEN + 1]; /* resolved, normalized absolute URL */
+  char text[CAPY_TEXT_LINK_TEXT_MAX + 1]; /* trimmed UTF-8 anchor label, "" if none */
 };
 
 struct capy_text_doc {
