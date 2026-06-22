@@ -140,11 +140,15 @@ Deterministic rules:
   Etapa 12);
 - clean output: the body/title contain no control bytes other than the block
   separator `\n` (CRLF, tabs and other control bytes are normalized/dropped);
-- whitespace runs collapse to a single space and blocks are trimmed; common
-  named entities (including the complete HTML4 Latin-1 set, e.g. the accented
-  letters `&Ccedil;`/`&Atilde;`/`&Otilde;`/`&Acirc;` and the symbol/punctuation
-  block `&iexcl;`/`&iquest;`/`&micro;`/`&sup2;`), decimal and hex references are
-  decoded to UTF-8; `&nbsp;` collapses to a space;
+- whitespace runs collapse to a single space and blocks are trimmed; the
+  complete HTML4 named entity set is decoded to UTF-8 -- the Latin-1 block
+  (accented letters plus `&iexcl;`/`&iquest;`/`&micro;`/`&sup2;`), the
+  'symbols' group (Greek `&alpha;`..`&omega;`, math `&le;`/`&ge;`/`&times;`/
+  `&infin;`/`&sum;`, arrows `&larr;`..`&harr;`, card suits `&hearts;`) and the
+  'special' group (typographic punctuation `&ndash;`/`&mdash;`/`&hellip;`/
+  `&lsquo;`..`&rdquo;`/`&sbquo;`/`&bdquo;`, ligatures `&OElig;`/`&oelig;`,
+  `&trade;`/`&euro;`/`&permil;`); decimal and hex references are decoded to
+  UTF-8; `&nbsp;` collapses to a space;
 - preformatted text (`<pre>`) preserves its spaces, tabs and newlines verbatim
   (CRLF is normalized to LF; a single leading newline right after `<pre>` is
   dropped per the HTML rule); entities still decode inside `<pre>`;

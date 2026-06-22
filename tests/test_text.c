@@ -14,6 +14,8 @@
 
 #include "capy_test.h"
 #include "html_text.h"
+#include "html_entities.h"
+#include "test_html4_entities_table.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -28,6 +30,7 @@ static const char *const g_cases[] = {
     "entities",
     "entities-latin1",
     "entities-latin1-symbols",
+    "entities-html4-symbols",
     "link-unresolved",
     "links",
     "list",
@@ -215,6 +218,21 @@ static void test_null_guards(struct capy_test_ctx *ctx) {
                            CAPY_TEXT_ERR_NULL);
 }
 
+static void test_html4_entity_table(struct capy_test_ctx *ctx) {
+  size_t i;
+  for (i = 0;
+       i < sizeof(g_html4_entity_cases) / sizeof(g_html4_entity_cases[0]);
+       i++) {
+    const struct capy_html4_entity_case *c = &g_html4_entity_cases[i];
+    uint32_t cp = 0u;
+    char buf[4];
+    size_t consumed = capy_html_charref_at(c->input, strlen(c->input), &cp);
+    size_t n = capy_utf8_encode(cp, buf);
+    CAPY_TEST_CHECK(ctx, consumed == strlen(c->input));
+    CAPY_TEST_CHECK(ctx, n == c->len && memcmp(buf, c->utf8, c->len) == 0);
+  }
+}
+
 int main(int argc, char **argv) {
   struct capy_test_ctx ctx;
   const char *dir = (argc > 1) ? argv[1] : "tests/fixtures/html-to-text";
@@ -227,6 +245,7 @@ int main(int argc, char **argv) {
     run_case(&ctx, dir, g_cases[i]);
   }
   test_null_guards(&ctx);
+  test_html4_entity_table(&ctx);
 
   return capy_test_report(&ctx, "html-to-text");
 }
