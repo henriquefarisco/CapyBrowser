@@ -412,9 +412,13 @@ first, then image/link markers, then the element's children in document order:
 
 - `RECT` - a background fill for an element with a computed `background-color`
   (geometry = the box; payload = the color value);
-- `IMAGE` - a placeholder for an `<img>` element (geometry = the box; payload =
-  the `alt` text as an accessibility label, when present). No decode happens
-  here; pixels are a later `capy-codec-image` concern;
+- `IMAGE` - an `<img>` element (geometry = the box; payload = the `alt` text as
+  an accessibility label, when present, **plus** the `src` resolved to an
+  absolute URL through Fase C1, when it resolves -- so the consumer can fetch and
+  decode it; an unresolvable `src` leaves the URL payload empty). No decode
+  happens here; the resolved-src payload is additive (the field already existed
+  for `LINK`) so `CAPY_DL_VERSION` is unchanged; pixels are a later
+  `capy-codec-image` concern handled by the CapyOS render backend;
 - `LINK` - a link bound for an `<a>` element whose `href` resolves to an
   absolute URL through Fase C1 (geometry = the box; payload = the resolved URL).
   An href that cannot resolve is dropped (no node);

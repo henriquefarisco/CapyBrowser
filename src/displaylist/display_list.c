@@ -169,12 +169,35 @@ static void dl_emit_element(struct dl_ctx *c, const struct capy_layout_box *box,
     if (nidx != DL_NONE) {
       size_t aoff = 0;
       size_t alen = 0;
+      size_t soff = 0;
+      size_t slen = 0;
       if (capy_dom_find_attr(c->dom, en, "alt", &aoff, &alen) && alen > 0) {
         size_t loff = 0;
         size_t llen = 0;
         dl_intern_raw(c->out, c->dom->strings + aoff, alen, &loff, &llen);
         c->out->nodes[nidx].label_off = loff;
         c->out->nodes[nidx].label_len = llen;
+      }
+      /* Resolve src through Fase C1 (same as <a href>) so the consumer can
+       * fetch/decode the image; an src that cannot resolve to an absolute URL
+       * leaves url_len = 0 (the consumer then shows the alt placeholder). */
+      if (capy_dom_find_attr(c->dom, en, "src", &soff, &slen) && slen > 0 &&
+          slen <= CAPY_URL_MAX_LEN) {
+        char sbuf[CAPY_URL_MAX_LEN + 1];
+        struct capy_url url;
+        memcpy(sbuf, c->dom->strings + soff, slen);
+        sbuf[slen] = '\0';
+        if (capy_url_parse(sbuf, c->base_url, &url, NULL) == CAPY_URL_OK) {
+          char ubuf[CAPY_URL_MAX_LEN + 1];
+          int sl = capy_url_serialize(&url, ubuf, sizeof(ubuf));
+          if (sl >= 0) {
+            size_t uoff = 0;
+            size_t ulen = 0;
+            dl_intern_raw(c->out, ubuf, (size_t)sl, &uoff, &ulen);
+            c->out->nodes[nidx].url_off = uoff;
+            c->out->nodes[nidx].url_len = ulen;
+          }
+        }
       }
     }
   }

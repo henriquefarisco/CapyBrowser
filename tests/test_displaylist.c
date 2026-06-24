@@ -10,8 +10,8 @@
  * Dump format:
  *   displaylist v<version> <cw>x<ch>
  *   <kind> @<x>,<y> <w>x<h> [payload]
- * where payload is `"text" [color=...]`, `color=...`, `[alt="..."]` o
- * `url=...` per kind.
+ * where payload is `"text" [color=...]`, `color=...`, `[alt="..."] [src=...]`
+ * or `url=...` per kind.
  */
 
 #include "capy_test.h"
@@ -126,6 +126,10 @@ static void dump_dl(void) {
           dput(" alt=\"");
           dput_bytes(g_dl.strings + n->label_off, n->label_len);
           dput("\"");
+        }
+        if (n->url_len > 0) {
+          dput(" src=");
+          dput_bytes(g_dl.strings + n->url_off, n->url_len);
         }
         break;
       case CAPY_DL_LINK:

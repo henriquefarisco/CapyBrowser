@@ -3,4 +3,4 @@ link @0,0 20x1 url=https://e.com/b
 text @0,0 20x1 "hi" color=blue
 rect @0,1 20x1 color=yellow
 text @0,1 20x1 "yo"
-image @0,2 20x0 alt="cat"
+image @0,2 20x0 alt="cat" src=https://e.com/a/c.png

@@ -41,7 +41,7 @@ enum capy_dl_status {
 enum capy_dl_node_kind {
   CAPY_DL_TEXT = 0,  /* a run of text */
   CAPY_DL_RECT = 1,  /* a filled rectangle (e.g. a background) */
-  CAPY_DL_IMAGE = 2, /* an image placeholder (no decode here) */
+  CAPY_DL_IMAGE = 2, /* an image: alt label + resolved src URL (no decode here) */
   CAPY_DL_LINK = 3   /* a link bound with a resolved absolute URL */
 };
 
@@ -62,7 +62,8 @@ struct capy_dl_warnings {
  * are ranges into dl->strings; an unused payload has a zero length. Per kind:
  *   TEXT  -> text (run bytes), color (if the node has a computed color);
  *   RECT  -> color (the fill);
- *   IMAGE -> label (the alt / a11y text, if any);
+ *   IMAGE -> label (the alt / a11y text, if any), url (the resolved absolute
+ *            src URL, if it resolves -- lets the consumer fetch/decode it);
  *   LINK  -> url (the resolved absolute URL).
  */
 struct capy_dl_node {
