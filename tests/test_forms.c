@@ -94,6 +94,36 @@ static void test_reject_url(struct capy_test_ctx *ctx) {
                                         f, 1, &r) == CAPY_FORM_ERR_URL);
 }
 
+static void test_reject_method_and_reset(struct capy_test_ctx *ctx) {
+  struct capy_form_request r;
+  strcpy(r.url, "https://stale.example/");
+  strcpy(r.body, "secret=stale");
+  r.body_len = strlen(r.body);
+  r.content_type = "stale/type";
+  CAPY_TEST_CHECK(ctx,
+                  capy_form_submit((enum capy_form_method)99,
+                                   "https://e.com/s", NULL, NULL, 0, &r) ==
+                      CAPY_FORM_ERR_METHOD);
+  CAPY_TEST_CHECK(ctx, r.url[0] == '\0');
+  CAPY_TEST_CHECK(ctx, r.body[0] == '\0');
+  CAPY_TEST_CHECK(ctx, r.body_len == 0);
+  CAPY_TEST_CHECK(ctx, r.content_type[0] == '\0');
+  CAPY_TEST_CHECK(ctx,
+                  strcmp(capy_form_method_name((enum capy_form_method)99),
+                         "UNKNOWN") == 0);
+
+  strcpy(r.url, "https://stale.example/");
+  strcpy(r.body, "secret=stale");
+  r.body_len = strlen(r.body);
+  r.content_type = "stale/type";
+  CAPY_TEST_CHECK(ctx, capy_form_submit(CAPY_FORM_POST, NULL, NULL, NULL, 0,
+                                        &r) == CAPY_FORM_ERR_NULL);
+  CAPY_TEST_CHECK(ctx, r.url[0] == '\0');
+  CAPY_TEST_CHECK(ctx, r.body[0] == '\0');
+  CAPY_TEST_CHECK(ctx, r.body_len == 0);
+  CAPY_TEST_CHECK(ctx, r.content_type[0] == '\0');
+}
+
 static void test_null_and_names(struct capy_test_ctx *ctx) {
   struct capy_form_request r;
   CAPY_TEST_CHECK(ctx, capy_form_submit(CAPY_FORM_GET, NULL, NULL, NULL, 0, &r) ==
@@ -115,6 +145,7 @@ int main(void) {
   test_relative_action(&ctx);
   test_reject_scheme(&ctx);
   test_reject_url(&ctx);
+  test_reject_method_and_reset(&ctx);
   test_null_and_names(&ctx);
   return capy_test_report(&ctx, "forms");
 }

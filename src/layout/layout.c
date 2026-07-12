@@ -89,6 +89,26 @@ static int layout_is_display_none(const struct layout_ctx *c, size_t node) {
                          cs->value_len[CAPY_CSS_PROP_DISPLAY], "none");
 }
 
+/* HTML elements that never produce a CSS box in the static engine. Keep the
+ * rule here, at the layout boundary: the DOM remains complete and inspectable,
+ * while every renderer consuming the box tree gets the same safe behavior.
+ * `head` and `template` suppress their complete subtrees. The metadata/rawtext
+ * entries are also listed individually so malformed markup that places them in
+ * the body cannot leak their contents into the visible page. */
+static int layout_is_non_rendered_element(const struct capy_dom_node *node) {
+  static const char *const hidden[] = {
+      "base", "datalist", "head", "link",   "meta",
+      "script", "style",  "template", "title",
+  };
+  size_t i;
+  for (i = 0; i < sizeof(hidden) / sizeof(hidden[0]); i++) {
+    if (strcmp(node->name, hidden[i]) == 0) {
+      return 1;
+    }
+  }
+  return 0;
+}
+
 static size_t layout_new_box(struct capy_layout_tree *t,
                              enum capy_layout_box_kind kind, size_t dom_node) {
   struct capy_layout_box *b;
@@ -146,7 +166,8 @@ static long layout_children(struct layout_ctx *c, size_t parent_dom,
   while (child != CAPY_DOM_NONE) {
     const struct capy_dom_node *cn = &c->dom->nodes[child];
     if (cn->type == CAPY_DOM_ELEMENT) {
-      if (!layout_is_display_none(c, child)) {
+      if (!layout_is_non_rendered_element(cn) &&
+          !layout_is_display_none(c, child)) {
         size_t b = layout_new_box(c->out, CAPY_LAYOUT_BLOCK, child);
         if (b != CAPY_LAYOUT_NONE) {
           long h;

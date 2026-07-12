@@ -46,7 +46,8 @@ enum capy_dom_warning {
   CAPY_DOM_WARN_DEPTH_LIMIT = 5,      /* nesting exceeded CAPY_DOM_MAX_DEPTH */
   CAPY_DOM_WARN_STRAY_END_TAG = 6,    /* end tag with no open match */
   CAPY_DOM_WARN_UNCLOSED_TAG = 7,     /* a tag ran to end-of-input */
-  CAPY_DOM_WARN_UNCLOSED_COMMENT = 8  /* a comment ran to end-of-input */
+  CAPY_DOM_WARN_UNCLOSED_COMMENT = 8, /* a comment ran to end-of-input */
+  CAPY_DOM_WARN_SCRIPT_BLOCKED = 9    /* script present; never executed */
 };
 
 #define CAPY_DOM_WARN_MAX 16u

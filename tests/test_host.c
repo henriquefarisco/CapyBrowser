@@ -72,6 +72,24 @@ static void test_status_names(struct capy_test_ctx *ctx) {
                0);
 }
 
+static void test_payload_append_is_atomic_and_bounded(struct capy_test_ctx *ctx) {
+  unsigned char storage[4] = {0};
+  static const unsigned char first[] = {'a', 'b', 'c'};
+  static const unsigned char overflow[] = {'d', 'e'};
+  struct capy_host_payload out;
+  memset(&out, 0, sizeof(out));
+  out.buf = storage;
+  out.cap = sizeof(storage);
+  CAPY_TEST_CHECK(ctx, capy_host_payload_append(&out, first, sizeof(first)) ==
+                           CAPY_HOST_OK);
+  CAPY_TEST_CHECK(ctx, out.len == 3 && memcmp(storage, "abc", 3) == 0);
+  CAPY_TEST_CHECK(ctx,
+                  capy_host_payload_append(&out, overflow, sizeof(overflow)) ==
+                      CAPY_HOST_ERR_TOO_LARGE);
+  CAPY_TEST_CHECK(ctx, out.len == 3);
+  CAPY_TEST_CHECK(ctx, out.truncated == 1);
+}
+
 int main(void) {
   struct capy_test_ctx ctx;
   ctx.checks = 0;
@@ -84,5 +102,6 @@ int main(void) {
   test_rejects_empty_host(&ctx);
   test_null_and_small_cap(&ctx);
   test_status_names(&ctx);
+  test_payload_append_is_atomic_and_bounded(&ctx);
   return capy_test_report(&ctx, "host");
 }

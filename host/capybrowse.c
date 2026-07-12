@@ -251,6 +251,14 @@ static int load_url(const char *url) {
     }
     return rc;
   }
+  /* Redirects change the document base, Referer source and history identity.
+   * Normalize the final libcurl URL before any relative-link processing. */
+  if (pay.effective_url[0] != '\0') {
+    rc = prepare_url(pay.effective_url, g_base, sizeof(g_base));
+    if (rc != CAPY_HOST_OK) {
+      return rc;
+    }
+  }
   if (!ct_is_textual(pay.content_type)) {
     return save_download(g_base, &pay);
   }

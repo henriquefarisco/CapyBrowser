@@ -92,6 +92,24 @@ static void test_filename_star_pct(struct capy_test_ctx *ctx) {
   CAPY_TEST_CHECK(ctx, strcmp(d.filename, "a b.txt") == 0);
 }
 
+static void test_ignore_lookalike_filename_params(struct capy_test_ctx *ctx) {
+  struct capy_download d;
+  CAPY_TEST_CHECK(ctx, capy_download_prepare(
+                           "https://e.com/safe.bin", NULL,
+                           "attachment; notfilename=attacker.exe; "
+                           "xfilename*=UTF-8''attacker2.exe",
+                           -1, 0, &d) == CAPY_DOWNLOAD_OK);
+  CAPY_TEST_CHECK(ctx, d.verdict == CAPY_DOWNLOAD_ACCEPT);
+  CAPY_TEST_CHECK(ctx, strcmp(d.filename, "safe.bin") == 0);
+
+  CAPY_TEST_CHECK(ctx, capy_download_prepare(
+                           "https://e.com/safe.bin", NULL,
+                           "attachment; note=\"x; filename=attacker.exe\"",
+                           -1, 0, &d) == CAPY_DOWNLOAD_OK);
+  CAPY_TEST_CHECK(ctx, d.verdict == CAPY_DOWNLOAD_ACCEPT);
+  CAPY_TEST_CHECK(ctx, strcmp(d.filename, "safe.bin") == 0);
+}
+
 static void test_relative_resolution(struct capy_test_ctx *ctx) {
   struct capy_download d;
   CAPY_TEST_CHECK(ctx, capy_download_prepare("file.zip", "https://e.com/a/",
@@ -132,6 +150,7 @@ int main(void) {
   test_url_derived(&ctx);
   test_url_fallback(&ctx);
   test_filename_star_pct(&ctx);
+  test_ignore_lookalike_filename_params(&ctx);
   test_relative_resolution(&ctx);
   test_null_guards(&ctx);
   test_verdict_names(&ctx);

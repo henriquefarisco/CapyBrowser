@@ -25,7 +25,8 @@ enum capy_form_status {
   CAPY_FORM_ERR_NULL = -1,
   CAPY_FORM_ERR_URL = -2,     /* action invalid / unresolvable */
   CAPY_FORM_ERR_SCHEME = -3,  /* non-HTTPS action (HTTPS-first) */
-  CAPY_FORM_ERR_OVERFLOW = -4 /* encoded data exceeds a budget */
+  CAPY_FORM_ERR_OVERFLOW = -4, /* encoded data exceeds a budget */
+  CAPY_FORM_ERR_METHOD = -5    /* method is neither GET nor POST */
 };
 
 enum capy_form_method {
@@ -56,8 +57,10 @@ struct capy_form_request {
  *   fields/field_count : the name/value pairs (may be NULL only if count 0).
  *   out         : receives the method, resolved URL, body and content type.
  *
- * Returns CAPY_FORM_OK, or a negative enum capy_form_status. Always resets
- * *out first.
+ * Returns CAPY_FORM_OK, or a negative enum capy_form_status. A method other
+ * than GET/POST fails closed with CAPY_FORM_ERR_METHOD. When `out` is non-NULL,
+ * it is always reset before any other argument is validated, so an error never
+ * leaves a stale URL/body from a previous request.
  */
 int capy_form_submit(enum capy_form_method method, const char *action,
                      const char *base_url, const struct capy_form_field *fields,

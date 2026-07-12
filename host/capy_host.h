@@ -34,20 +34,29 @@ enum capy_host_status {
 /*
  * A payload read into a caller-owned fixed buffer. The host layer neve
  * allocates: the caller provides buf/cap and the layer fills len (<= cap).
- * Bytes beyond cap are intentionally discarded so the Fase C2 input budget
- * (and its INPUT_TRUNCATED warning) governs truncation deterministically.
+ * A source larger than cap fails with CAPY_HOST_ERR_TOO_LARGE; network
+ * transfers are aborted at the first overflowing chunk instead of silently
+ * discarding bytes or rendering an incomplete response.
  */
 #define CAPY_HOST_CT_MAX 127u
 #define CAPY_HOST_CD_MAX 511u
+#define CAPY_HOST_URL_MAX 2048u
 
 struct capy_host_payload {
   unsigned char *buf;
   size_t cap;
   size_t len;
   int truncated;                                  /* response bytes were dropped */
+  long http_status;                               /* final HTTP status, or 0 */
+  char effective_url[CAPY_HOST_URL_MAX + 1];      /* final URL after redirects */
   char content_type[CAPY_HOST_CT_MAX + 1];        /* response metadata, filled */
   char content_disposition[CAPY_HOST_CD_MAX + 1]; /* by fetch; empty if unknown */
 };
+
+/* Bounded append used by streaming adapters. It never partially accepts a
+ * chunk: overflow sets truncated and returns CAPY_HOST_ERR_TOO_LARGE. */
+int capy_host_payload_append(struct capy_host_payload *out,
+                             const unsigned char *data, size_t len);
 
 /* Read up to cap bytes of a local file into the payload (always available). */
 int capy_host_read_file(const char *path, struct capy_host_payload *out);
@@ -63,6 +72,8 @@ int capy_host_read_stdin(struct capy_host_payload *out);
  * to HTTPS. Built without a network backend this returns CAPY_HOST_ERR_DISABLED
  * (use a local file or stdin instead). user_agent (NULL/empty = a built-in
  * default) and referer (NULL/empty = none) carry the session request identity.
+ * On success, out->effective_url is the final HTTPS URL after redirects and
+ * out->http_status is the final 2xx status.
  */
 int capy_host_fetch_https(const char *url, const char *user_agent,
                           const char *referer, struct capy_host_payload *out);

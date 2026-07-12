@@ -16,8 +16,26 @@
 /* Clear the response-metadata fields so every filled payload is well-defined. */
 static void capy_host_reset_meta(struct capy_host_payload *out) {
   out->truncated = 0;
+  out->http_status = 0;
+  out->effective_url[0] = '\0';
   out->content_type[0] = '\0';
   out->content_disposition[0] = '\0';
+}
+
+int capy_host_payload_append(struct capy_host_payload *out,
+                             const unsigned char *data, size_t len) {
+  if (!out || !out->buf || (!data && len != 0) || out->len > out->cap) {
+    return CAPY_HOST_ERR_ARGS;
+  }
+  if (len > out->cap - out->len) {
+    out->truncated = 1;
+    return CAPY_HOST_ERR_TOO_LARGE;
+  }
+  if (len != 0) {
+    memcpy(out->buf + out->len, data, len);
+    out->len += len;
+  }
+  return CAPY_HOST_OK;
 }
 
 int capy_host_read_file(const char *path, struct capy_host_payload *out) {
@@ -36,6 +54,19 @@ int capy_host_read_file(const char *path, struct capy_host_payload *out) {
     out->len = 0;
     return CAPY_HOST_ERR_READ;
   }
+  if (out->len == out->cap) {
+    int extra = fgetc(f);
+    if (extra != EOF) {
+      out->truncated = 1;
+      fclose(f);
+      return CAPY_HOST_ERR_TOO_LARGE;
+    }
+    if (ferror(f)) {
+      fclose(f);
+      out->len = 0;
+      return CAPY_HOST_ERR_READ;
+    }
+  }
   fclose(f);
   return CAPY_HOST_OK;
 }
@@ -49,6 +80,17 @@ int capy_host_read_stdin(struct capy_host_payload *out) {
   if (ferror(stdin)) {
     out->len = 0;
     return CAPY_HOST_ERR_READ;
+  }
+  if (out->len == out->cap) {
+    int extra = fgetc(stdin);
+    if (extra != EOF) {
+      out->truncated = 1;
+      return CAPY_HOST_ERR_TOO_LARGE;
+    }
+    if (ferror(stdin)) {
+      out->len = 0;
+      return CAPY_HOST_ERR_READ;
+    }
   }
   return CAPY_HOST_OK;
 }
@@ -89,24 +131,21 @@ int capy_host_prepare_url(const char *in, char *out, size_t cap) {
 #include <curl/curl.h>
 
 /*
- * Copy into the caller buffer up to its capacity; silently drop any excess so
- * the Fase C2 input cap drives truncation. Always reports the full count so the
- * transfer is not aborted mid-stream.
+ * Append complete chunks only. Returning 0 makes libcurl abort immediately on
+ * overflow instead of downloading and silently discarding the rest.
  */
 static size_t capy_host_write_cb(char *ptr, size_t size, size_t nmemb,
                                  void *userp) {
   struct capy_host_payload *p = (struct capy_host_payload *)userp;
   size_t n = size * nmemb;
-  size_t room = (p->len < p->cap) ? (p->cap - p->len) : 0;
-  size_t take = (n < room) ? n : room;
-  if (take > 0) {
-    memcpy(p->buf + p->len, ptr, take);
-    p->len += take;
+  if (size != 0 && n / size != nmemb) {
+    p->truncated = 1;
+    return 0;
   }
-  if (take < n) {
-    p->truncated = 1; /* dropped bytes: caller must not treat as complete */
-  }
-  return n;
+  return capy_host_payload_append(p, (const unsigned char *)ptr, n) ==
+                 CAPY_HOST_OK
+             ? n
+             : 0;
 }
 
 /* Capture the Content-Disposition header value into the payload (case-insens). */
@@ -193,7 +232,19 @@ int capy_host_fetch_https(const char *url, const char *user_agent,
   res = curl_easy_perform(curl);
   if (res == CURLE_OK) {
     char *ct = NULL;
+    char *effective = NULL;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
+    out->http_status = code;
+    if (curl_easy_getinfo(curl, CURLINFO_EFFECTIVE_URL, &effective) == CURLE_OK &&
+        effective != NULL) {
+      size_t k = strlen(effective);
+      if (k > CAPY_HOST_URL_MAX) {
+        curl_easy_cleanup(curl);
+        out->len = 0;
+        return CAPY_HOST_ERR_TOO_LARGE;
+      }
+      memcpy(out->effective_url, effective, k + 1);
+    }
     if (curl_easy_getinfo(curl, CURLINFO_CONTENT_TYPE, &ct) == CURLE_OK &&
         ct != NULL) {
       size_t k = 0;
@@ -207,12 +258,21 @@ int capy_host_fetch_https(const char *url, const char *user_agent,
   curl_easy_cleanup(curl);
 
   if (res != CURLE_OK) {
+    if (out->truncated && res == CURLE_WRITE_ERROR) {
+      out->len = 0;
+      return CAPY_HOST_ERR_TOO_LARGE;
+    }
     out->len = 0;
     return CAPY_HOST_ERR_NETWORK;
   }
-  if (code >= 400) {
+  if (code < 200 || code >= 300) {
     out->len = 0;
     return CAPY_HOST_ERR_HTTP;
+  }
+  if (out->effective_url[0] == '\0' ||
+      strncmp(out->effective_url, "https://", 8) != 0) {
+    out->len = 0;
+    return CAPY_HOST_ERR_SCHEME;
   }
   return CAPY_HOST_OK;
 }

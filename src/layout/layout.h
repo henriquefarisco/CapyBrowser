@@ -10,10 +10,13 @@
  * This is a deliberately simple first layout: a vertical block flow. Every
  * rendered element becomes a block box that stacks its children (child element
  * boxes and text line-boxes) vertically and spans the parent's content width;
- * `display: none` (from the cascade) removes an element and its subtree. Text
- * nodes collapse ASCII whitespace and greedy-wrap to the content width, each
- * becoming a text box whose height is its line count. There is no inline flow,
- * margins/padding/borders or float/positioning yet (additive later).
+ * `display: none` (from the cascade) removes an element and its subtree. HTML
+ * metadata/inert/rawtext elements (`head`, `title`, `style`, `script`, `meta`,
+ * `link`, `template`, etc.) never create boxes, even when malformed markup puts
+ * them in the body. Text nodes collapse ASCII whitespace and greedy-wrap to the
+ * content width, each becoming a text box whose height is its line count. There
+ * is no inline flow, margins/padding/borders or float/positioning yet (additive
+ * later).
  *
  * Geometry is in abstract cells (1 column wide, 1 line tall) -- a monospace
  * approximation that is deterministic and font-independent; real pixel metrics

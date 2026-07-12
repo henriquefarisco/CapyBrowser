@@ -21,6 +21,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Install toolchain
-        run: sudo apt-get update && sudo apt-get install -y build-essential
-      - name: Validate
-        run: make validate
+        run: sudo apt-get update && sudo apt-get install -y build-essential libcurl4-openssl-dev python3
+      - name: Offline release check
+        run: make release-check

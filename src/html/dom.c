@@ -185,6 +185,8 @@ const char *capy_dom_warning_name(enum capy_dom_warning w) {
       return "UNCLOSED_TAG";
     case CAPY_DOM_WARN_UNCLOSED_COMMENT:
       return "UNCLOSED_COMMENT";
+    case CAPY_DOM_WARN_SCRIPT_BLOCKED:
+      return "SCRIPT_BLOCKED";
   }
   return "UNKNOWN";
 }

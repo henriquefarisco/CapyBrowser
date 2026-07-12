@@ -49,6 +49,15 @@ static int form_encode(const char *src, char *buf, size_t cap, size_t *len) {
   return 1;
 }
 
+static void form_request_reset(struct capy_form_request *out,
+                               enum capy_form_method method) {
+  out->method = method;
+  out->url[0] = '\0';
+  out->body[0] = '\0';
+  out->body_len = 0;
+  out->content_type = "";
+}
+
 int capy_form_submit(enum capy_form_method method, const char *action,
                      const char *base_url, const struct capy_form_field *fields,
                      size_t field_count, struct capy_form_request *out) {
@@ -57,14 +66,16 @@ int capy_form_submit(enum capy_form_method method, const char *action,
   size_t i;
   struct capy_url u;
 
-  if (action == NULL || out == NULL || (fields == NULL && field_count > 0)) {
+  if (out == NULL) {
     return CAPY_FORM_ERR_NULL;
   }
-  out->method = method;
-  out->url[0] = '\0';
-  out->body[0] = '\0';
-  out->body_len = 0;
-  out->content_type = "";
+  form_request_reset(out, method);
+  if (action == NULL || (fields == NULL && field_count > 0)) {
+    return CAPY_FORM_ERR_NULL;
+  }
+  if (method != CAPY_FORM_GET && method != CAPY_FORM_POST) {
+    return CAPY_FORM_ERR_METHOD;
+  }
 
   for (i = 0; i < field_count; i++) {
     if (fields[i].name == NULL || fields[i].value == NULL) {

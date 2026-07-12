@@ -4,7 +4,9 @@ CapyBrowser is the external browser-core repository for CapyOS.
 
 ## CapyOS reference version
 
-Pinned for this release: `0.8.0-alpha.265+20260611`. Update this section together with `docs/compatibility.md` whenever the CapyOS core version, ABI or canonical manifest format changes.
+Pinned for this release: `0.8.0-alpha.309+20260702`. `make version-check`
+enforces this value against `docs/compatibility.md`, `docs/roadmap.md` and the
+sibling `CapyOS/VERSION.yaml` when that repository is available.
 
 ## Migrated content
 
@@ -21,15 +23,26 @@ CapyBrowser owns portable browser logic. CapyCodecs owns portable codec logic. C
 
 ## Current status
 
-The historical CapyOS browser application source is not present in active `src/apps`. Browser core work is rebuilt here as URL, HTML-to-text and static display-list logic. Codecs are now owned canonically by `CapyCodecs`.
+The historical CapyOS browser application source is not present in active
+`src/apps`. CapyBrowser 0.6.7 provides URL and HTML-to-text cores, a static
+HTML/CSS page pipeline, layout/display-list output and the host-testable
+download/session/forms decision surfaces. CapyOS consumes the text and
+graphical cores in Etapas 6-7; codecs remain canonically owned by CapyCodecs.
 
-## Pending extractions
+## Remaining integration work
 
-- CapyOS-side adapter for the published Etapa 6 text package.
-- Static HTML/CSS display list core as new implementation.
-- Adapter to consume `CapyCodecs` image decoders when CapyOS integration stages permit it.
+- Wire form controls/submission and streaming downloads through CapyOS host
+  callbacks.
+- Complete private-session storage/transport enforcement in CapyOS.
+- Promote signed package/index publication and keep release assets plus the
+  production modules index synchronized through `make release-check-remote`.
+- Expand the static HTML/CSS subset before the separately gated JavaScript and
+  dynamic-DOM stages.
 
 ## Integration contracts
+
+- [`release-readiness.md`](release-readiness.md) — current completion,
+  publication blockers and the ordered P0/P1/P2 browser roadmap.
 
 - `CapyOS/docs/reference/integration/browser-core-integration-contract.md`
 - `CapyOS/docs/reference/integration/media-codec-integration-contract.md`

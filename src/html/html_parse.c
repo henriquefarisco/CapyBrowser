@@ -108,6 +108,12 @@ int capy_html_parse(const char *html, size_t html_len,
       }
       case CAPY_HTML_TOKEN_START: {
         size_t idx = capy_dom_new_node(doc, CAPY_DOM_ELEMENT);
+        if (strcmp(tok.name, "script") == 0) {
+          /* Script nodes remain inspectable in the DOM, but the static engine
+           * never executes or lays them out. Surface that policy decision to
+           * production callers as a deterministic parser warning. */
+          capy_dom_warn(doc, CAPY_DOM_WARN_SCRIPT_BLOCKED);
+        }
         if (idx != CAPY_DOM_NONE) {
           strcpy(doc->nodes[idx].name, tok.name);
           build_attrs(doc, &tok, idx);

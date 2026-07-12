@@ -1,13 +1,13 @@
 # CapyBrowser compatibility and integration contract
 
 CapyBrowser owns the **portable browser-core logic** (URL parsing,
-HTML-to-text, static HTML/CSS parse, future display-list). CapyBrowser
+HTML-to-text, static HTML/CSS parse, versioned display-list and page pipeline). CapyBrowser
 modules must remain portable browser-core logic and must not depend
 on CapyOS runtime internals.
 
 ## CapyOS reference version
 
-- CapyOS core pinned for this contract: `0.8.0-alpha.265+20260611`
+- CapyOS core pinned for this contract: `0.8.0-alpha.309+20260702`
 - Authoritative cross-repo matrix: [`CapyOS/docs/reference/integration/compatibility-matrix.md`](../../CapyOS/docs/reference/integration/compatibility-matrix.md)
 - Canonical manifest format consumed by the in-tree adapter: [`CapyOS/docs/reference/integration/capypkg-publisher-manifest-format.md`](../../CapyOS/docs/reference/integration/capypkg-publisher-manifest-format.md)
 - Manual deploy runbook: [`CapyOS/docs/operations/manual-module-deploy-runbook.md`](../../CapyOS/docs/operations/manual-module-deploy-runbook.md)
@@ -24,14 +24,16 @@ on CapyOS runtime internals.
 
 CapyBrowser owns the `capy-browser-core` ABI. The Etapa 6 text subset is
 published in `v0.6.0` as a package handoff for CapyOS Slice 6.4; graphical
-runtime integration remains gated by Etapa 7.
+static runtime integration is active in Etapa 7 at the pinned CapyOS release.
 
 This ABI covers:
 
 - URL parsing and normalization;
 - HTML-to-text output (CapyBrowse Text for Etapa 6);
 - static HTML/CSS parse contracts (Etapa 7);
-- future display-list format (versioned, additive, deterministic);
+- display-list format (versioned, additive, deterministic);
+- the production static-page pipeline that composes parse, cascade, layout and
+  display-list into one caller-owned result arena;
 - deterministic parse/layout errors;
 - internal limits on memory, time and input size;
 - download orchestration (planned, additive, Etapa 7) — URL resolution,
@@ -268,7 +270,9 @@ Tolerant, deterministic rules:
 
 Warnings (`enum capy_dom_warning`): `INPUT_TRUNCATED`, `NODE_BUDGET`,
 `ATTR_BUDGET`, `STRING_BUDGET`, `DEPTH_LIMIT`, `STRAY_END_TAG`, `UNCLOSED_TAG`,
-`UNCLOSED_COMMENT`.
+`UNCLOSED_COMMENT`, `SCRIPT_BLOCKED`. A `<script>` remains inspectable in the
+DOM but is never executed or laid out; `SCRIPT_BLOCKED` is recorded once when
+script markup is present so the UI can make the policy visible.
 
 Limits (alpha, configurable): nodes `CAPY_DOM_MAX_NODES` (1024), attributes
 `CAPY_DOM_MAX_ATTRS` (1024), string arena `CAPY_DOM_STRING_ARENA` (64 KiB),
@@ -374,6 +378,9 @@ Model (a deliberately simple first layout):
 - `display: none` (from the cascade) removes an element and its subtree;
 - text nodes collapse ASCII whitespace and greedy-wrap to the content width,
   each becoming a text box whose height is its line count;
+- metadata, inert and rawtext-only elements (`head`, `title`, `style`, `script`,
+  `meta`, `link`, `template`, `base`, `datalist`) never create boxes; hiding the
+  subtree at layout keeps the DOM inspectable without leaking non-page content;
 - no inline flow, margins/padding/borders, floats or positioning yet (additive);
 - geometry is in abstract cells (1 column wide, 1 line tall) - a deterministic,
   font-independent monospace approximation; real pixel metrics arrive with a
@@ -435,6 +442,30 @@ Limits (alpha, configurable): nodes `CAPY_DL_MAX_NODES` (4096); string arena
 Determinism: same `(DOM, stylesheet, computed styles, box tree, base URL)`
 produces the same node sequence, geometry and strings.
 
+## Production static-page pipeline - implemented (host-testable)
+
+`src/page/page_render.{c,h}` provides the production integration entry point:
+
+- `capy_page_render(html, html_len, css, css_len, base_url, viewport_width,
+  out)` composes HTML parse -> CSS parse -> cascade -> layout -> display-list;
+- the caller owns one allocation-free `struct capy_page` arena containing every
+  intermediate product and the final `display_list`; no cleanup is required;
+- `completed_stage` identifies the last successful stage and the negative
+  `enum capy_page_status` identifies the first fatal stage error;
+- tolerant parse and budget exhaustion normally return `CAPY_PAGE_OK`, retaining
+  detailed per-stage warnings and setting the aggregate `truncated` flag;
+- `script_present` and page warning `SCRIPT_BLOCKED` expose that script markup
+  was found and deliberately not executed;
+- CSS may be omitted as `(NULL, 0)`; the base URL may be NULL; viewport width is
+  clamped to at least one layout cell.
+
+All computed-style references remain valid because their stylesheet and string
+arena live inside the same `struct capy_page`. The page object may be copied as
+a unit because stage relationships use indices/offsets rather than internal
+pointers; individual members must not be detached while in use. Golden coverage
+lives in `tests/fixtures/page/` and runs through `make test-page`, which is part
+of `make validate`.
+
 ## Reference host front-end (outside the `capy-browser-core` ABI)
 
 `host/` contains a reference command-line front-end ("CapyBrowse Text") that
@@ -450,6 +481,10 @@ mode (no Referer sent). A response whose Content-Type is not `text/*` is treated
 as a download: the Fase M4a core derives a sanitized filename (from
 Content-Disposition or the URL path) and the bytes are written to it, fail-closed
 on a truncated transfer or a rejected verdict.
+The host records the final HTTP status and effective URL after redirects; that
+effective URL becomes the document base, history identity and next Referer
+source. Fixed-buffer overflow aborts the libcurl transfer immediately and
+returns `TOO_LARGE`, so partial network bodies are never rendered or saved.
 
 It is **reference tooling, not part of the ABI**: it adds no error code, warning
 or display-list node, so it requires no cross-repo ratification. When the CapyOS
@@ -487,8 +522,8 @@ mode remains the documented fallback. Build via `make capybrowse` (offline) o
 | Image decode failure | codec adapter returns negative | UI shows placeholder; page still renders |
 | JavaScript present | parser blocks execution (Etapas 6-7 do not execute JS) | UI shows warning; page renders without JS |
 | Dangerous redirect (cross-scheme, non-HTTPS) | host adapter rejects | UI displays redirect blocked |
-| Download rejected (planned) | download validator rejects (non-HTTPS, dangerous redirect, invalid/empty/traversal filename) | UI displays download blocked |
-| Download exceeds size limit (planned) | download stream exceeds declared budget | UI displays "download too large" |
+| Download rejected | download validator rejects (non-HTTPS, dangerous redirect, invalid/empty/traversal filename) | UI displays download blocked |
+| Download exceeds size limit | host/core stream exceeds the declared budget | UI displays "download too large" |
 
 All errors must be deterministic. CapyBrowser never crashes the
 desktop, never executes JavaScript before Etapa 12, and never
@@ -505,7 +540,7 @@ auto-follows non-HTTPS redirects.
 | Image decode budget | bounded by `capy-codec-image` limits | CapyCodecs |
 | Maximum download size | declared-length check fail-closed (M4a); stream enforcement planned | CapyBrowser (enforce) + CapyOS (storage quota) |
 | Maximum derived filename length | bounded to 255 bytes (`CAPY_DOWNLOAD_FILENAME_MAX`, M4a) | CapyBrowser |
-| Capy package payload | ≤ 1 MiB during alpha streaming-buffer window | CapyOS adapter |
+| Capy package payload | ≤ 8 MiB (`CAPYPKG_PAYLOAD_MAX` / `HTTP_MAX_RESPONSE_SIZE`) | CapyOS adapter |
 
 ## Download surface (decision core implemented; streaming additive, Etapa 7)
 
@@ -648,7 +683,7 @@ It must not depend on codec source files or GUI internals directly.
 
 ## Validation before CapyOS integration
 
-Before CapyOS consumes a CapyBrowser release, externally validate:
+Before CapyOS consumes a CapyBrowser release, validate:
 
 - URL parse fixtures (host-side, golden);
 - HTML-to-text golden fixtures;
@@ -656,12 +691,13 @@ Before CapyOS consumes a CapyBrowser release, externally validate:
 - malformed/truncated input rejection;
 - dependency declaration for codecs (when image rendering is enabled);
 - no direct CapyOS kernel/runtime includes;
-- `make validate` and `make package` produce canonical assets when the
-  runtime opens.
+- `make release-check` passes offline (full core, libcurl-linked host smoke,
+  both package identities and deterministic artifact verification);
+- after publication, `make release-check-remote MODULES_INDEX_URL=...` resolves
+  the exact tag, GitHub Release, four assets and both production-index entries.
 
-CapyBrowser integration is gated by Etapas 6-7. Text-mode core
-lands first (Etapa 6) and is preserved as a fallback when graphical
-browsing arrives (Etapa 7).
+CapyBrowser integration is active in Etapas 6-7. Text mode landed first and is
+preserved as a fallback beside graphical static browsing.
 
 ## Etapa 6 publication handoff (`v0.6.0`)
 

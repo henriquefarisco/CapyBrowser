@@ -43,7 +43,11 @@ Rules for every fixture:
   warnings, truncation (Fase C2). Scaffolding.
 - `display-list/` — static display-list nodes: text runs, rectangles, image
   placeholders, link bounds, form controls, scroll extent, accessibility
-  labels (Fase M3). Scaffolding.
+  labels (Fase M3). **Live:** consumed by `tests/test_displaylist.c` via
+  `make test-displaylist`.
+- `page/`         — production HTML + CSS -> display-list pipeline, including
+  inert-element filtering and page-policy warnings. **Live:** consumed by
+  `tests/test_page.c` via `make test-page`.
 - `malformed/`    — tolerant recovery + fail-closed rejection across surfaces.
   Scaffolding.
 

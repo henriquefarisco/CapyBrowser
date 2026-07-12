@@ -3,13 +3,12 @@
 **Status:** proposta de planejamento de produto/engenharia. Subordinada
 aos documentos de contrato; não altera ABI nem limites até ser refletida
 em `compatibility.md` e na matriz cross-repo do CapyOS.
-**Versão atual:** `0.6.0` (handoff de publicação da Etapa 6: pacote
-`org.capyos.browser.text` sem dependência de codec de imagem, preservando o
-core gráfico `org.capyos.browser.core` para a Etapa 7).
-**Pin CapyOS:** `0.8.0-alpha.265+20260611` (ver [`compatibility.md`](compatibility.md)).
-**Política local:** este computador é **somente leitura/edição**. Todo gate
-(`make validate`, `make package`, golden fixtures de host, smokes do CapyOS)
-é executado **externamente** por humano ou CI.
+**Versão atual:** `0.6.7` (core textual publicado desde `v0.6.0`; pipeline
+gráfico estático e URL de imagem resolvida consumidos pela Etapa 7).
+**Pin CapyOS:** `0.8.0-alpha.309+20260702` (ver [`compatibility.md`](compatibility.md)).
+**Política de gate:** `make validate` e `make release-check` são offline e
+rodam localmente/na CI. A verificação de tag, GitHub Release, assets e índice é
+separada e explícita via `make release-check-remote MODULES_INDEX_URL=...`.
 
 ## Ordem de autoridade deste documento
 
@@ -47,10 +46,9 @@ Estes pontos não são negociáveis em nenhuma fase e limitam o que é possível
    não-HTTPS; sem carregar recursos externos automaticamente no modo texto.
 7. **Parser tolerante mas determinístico.** Recupera de HTML malformado sem
    abortar, e a recuperação é reproduzível byte a byte.
-8. **Gating por Etapa.** O runtime do navegador depende das Etapas 6-7 do
-   CapyOS (Etapa 6 ativa desde `alpha.264`). O roadmap entrega código
-   host-testável antes da integração; a ativação no CapyOS ocorre apenas por
-   adaptador versionado e gate externo.
+8. **Gating por Etapa.** As Etapas 6-7 estão ativas no CapyOS pinado. Novas
+   superfícies continuam chegando primeiro como código host-testável e só são
+   promovidas por adaptador versionado e gate externo.
 
 ---
 
@@ -64,14 +62,15 @@ arquivos) são honestamente classificados assim:
 |---|---|---|---|
 | **Seguro** | CapyBrowser (parse/limites) + CapyOS (TLS/sandbox) | Curto em diante | É o pilar nativo do design (fail-closed, HTTPS-first, sem JS). |
 | **Exibir texto** | CapyBrowser (HTML-to-text, text runs) | **Curto** (Etapa 6) | Primeiro entregável real e usável. |
-| **Exibir imagens** | CapyCodecs (`capy-codec-image`) + display-list | **Médio** (Etapa 7) | CapyBrowser só faz adapter + placeholders; decode é do CapyCodecs. |
-| **Baixar arquivos** | **Nova superfície** CapyBrowser + adapter CapyOS (fs/rede) | **Médio** | Não existe contrato hoje; precisa ser especificado (ver §6.1). |
-| **Anônimo** | **Novo modo** CapyBrowser (estado efêmero/UA) + CapyOS (transporte/proxy) | **Médio→Longo** | Não existe contrato hoje; anonimato de transporte é do CapyOS (ver §6.2). |
+| **Exibir imagens** | CapyCodecs (`capy-codec-image`) + display-list | **Ativo** (Etapa 7) | CapyBrowser emite URL/placeholder; decode permanece do CapyCodecs. |
+| **Baixar arquivos** | CapyBrowser + adapter CapyOS (fs/rede) | **Parcial** | Decisão/nome seguro e host de referência existem; streaming no adapter segue pendente (ver §6.1). |
+| **Anônimo** | CapyBrowser (estado efêmero/UA) + CapyOS (transporte/proxy) | **Parcial→Longo** | Identidade de request existe; transporte e isolamento persistente são do CapyOS (ver §6.2). |
 | **Abrir sites modernos sem grandes problemas** | Exige engine **JS** + reflow dinâmico | **Longo** (Etapa 12+) | Em tensão direta com o design atual; parite total é aspiracional. |
 
-**Conclusão honesta:** o curto prazo entrega um navegador **estático e sem
-script** (texto, depois imagens estáticas + download). "Sites modernos sem
-grandes problemas" é meta de **longo prazo** e fica atrás da Etapa 12 (JS).
+**Conclusão honesta:** a linha 0.6.x entrega um navegador **estático e sem
+script**, com texto, imagens estáticas e superfícies básicas de navegação.
+"Sites modernos sem grandes problemas" segue como meta de **longo prazo** e
+fica atrás da Etapa 12 (JS).
 
 ---
 
@@ -218,17 +217,16 @@ surface").
 **Critério de saída:** snapshot BMP retirado do caminho de build; decode roteado 100% via adapter; teste de falha de decode → placeholder determinístico.
 **Mapeia para:** exibir imagens (preparação; render só na Etapa 7).
 
-**Resultado do curto prazo:** um **navegador de texto seguro e determinístico**
-(C2), com URL robusto (C1) e pipeline de imagem pronto para a fase gráfica (C3).
-Ainda **sem** download e **sem** página gráfica — esses vêm no médio prazo.
+**Resultado consolidado até 0.6.7:** navegador de texto, core URL, pipeline
+gráfico estático, imagem via adapter e superfícies puras de download,
+sessão/privacidade e forms. O wiring completo dessas últimas superfícies no
+runtime continua no bloco M4/L1.
 
-### Fase H1 — Front-end host de referência ("CapyBrowse Text" CLI) — em desenvolvimento
+### Fase H1 — Front-end host de referência ("CapyBrowse Text" CLI) — implementado
 
-**Status:** **em desenvolvimento (esta entrega)**. Caminho escolhido para
-**disponibilizar já um app usável** ao usuário sem depender da abertura das
-Etapas 6-7 do CapyOS. Vive em `host/`, **fora de `src/`**, e é **tooling de
-referência — não faz parte da ABI** `capy-browser-core` (não adiciona código de
-erro, warning nem nó de display-list).
+**Status:** implementado e coberto por build offline mais `make test-net` para
+o binário ligado à libcurl. Vive em `host/`, **fora de `src/`**, e é tooling de
+referência — não faz parte da ABI `capy-browser-core`.
 
 **Objetivo:** transformar o core puro (C1 URL + C2 HTML→texto) num navegador de
 texto de linha de comando real e estável, num SO host normal (Linux/macOS).
@@ -255,9 +253,9 @@ aplicado no adapter (não-HTTPS recusado); nenhum JS; o modo texto é o produto.
 exige ratificação cross-repo**. Quando a Etapa 6 do CapyOS abrir, o adapter do
 CapyOS assume o desktop e este front-end vira ferramenta de referência/diagnóstico
 (o modo texto permanece como fallback).
-**Gates externos:** `make validate` (inclui o build offline do host); `make
-capybrowse-net` com libcurl para o caminho HTTPS; smoke manual de fetch HTTPS +
-render de uma página real.
+**Gates:** `make validate` inclui o build offline; `make test-net` compila e
+executa o binário ligado à libcurl sem depender de rede; `make release-check`
+agrega ambos. Fetch HTTPS real permanece smoke de integração do host/CapyOS.
 **Mapeia para:** "disponibilizar já um app estável" (texto), seguro, sem JS.
 
 ---

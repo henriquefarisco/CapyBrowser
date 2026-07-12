@@ -21,8 +21,10 @@ jobs:
       - uses: github/codeql-action/init@v4
         with:
           languages: c-cpp
-      - name: Build
-        run: make test
+      - name: Install full build dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential libcurl4-openssl-dev python3
+      - name: Build and test the full core plus network host
+        run: make clean && make validate && make test-net
       - uses: github/codeql-action/analyze@v4
   hardening:
     name: Hardened compile gate

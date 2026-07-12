@@ -22,19 +22,44 @@ static int ci_eq(char a, char b) {
   return a == b;
 }
 
-/* Case-insensitive substring search. Returns a pointer into h, or NULL. */
-static const char *ci_find(const char *h, const char *n) {
-  size_t nl = strlen(n);
-  if (nl == 0) {
-    return h;
-  }
-  for (; *h != '\0'; h++) {
+static int cd_is_ows(char c) { return c == ' ' || c == '\t'; }
+
+/* Return the value of an exact Content-Disposition parameter. Segments are
+ * separated only by semicolons outside quoted strings, preventing a lookalike
+ * such as `notfilename=` (or text inside a quoted value) from being accepted as
+ * the security-sensitive filename parameter. */
+static const char *cd_find_param(const char *cd, const char *name) {
+  const char *segment = cd;
+  size_t name_len = strlen(name);
+  while (*segment != '\0') {
+    const char *p = segment;
+    int in_quote = 0;
+    int escaped = 0;
     size_t i = 0;
-    while (i < nl && h[i] != '\0' && ci_eq(h[i], n[i])) {
+    while (cd_is_ows(*p)) {
+      p++;
+    }
+    while (i < name_len && p[i] != '\0' && ci_eq(p[i], name[i])) {
       i++;
     }
-    if (i == nl) {
-      return h;
+    if (i == name_len && p[i] == '=') {
+      return p + i + 1;
+    }
+
+    for (; *p != '\0'; p++) {
+      if (escaped) {
+        escaped = 0;
+      } else if (in_quote && *p == '\\') {
+        escaped = 1;
+      } else if (*p == '"') {
+        in_quote = !in_quote;
+      } else if (!in_quote && *p == ';') {
+        segment = p + 1;
+        break;
+      }
+    }
+    if (*p == '\0') {
+      break;
     }
   }
   return NULL;
@@ -65,11 +90,10 @@ static int cd_extract_filename(const char *cd, char *dst, size_t cap,
   const char *p;
   size_t n = 0;
 
-  p = ci_find(cd, "filename*=");
+  p = cd_find_param(cd, "filename*");
   if (p != NULL) {
     const char *q1 = NULL;
     const char *s;
-    p += 10; /* past "filename*=" */
     /* skip the charset'lang' prefix: advance past the second quote */
     for (s = p; *s != '\0' && *s != ';'; s++) {
       if (*s == '\'') {
@@ -96,9 +120,8 @@ static int cd_extract_filename(const char *cd, char *dst, size_t cap,
     return n > 0;
   }
 
-  p = ci_find(cd, "filename=");
+  p = cd_find_param(cd, "filename");
   if (p != NULL) {
-    p += 9; /* past "filename=" */
     if (*p == '"') {
       p++;
       while (*p != '\0' && *p != '"' && n + 1 < cap) {

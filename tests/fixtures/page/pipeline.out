@@ -1,0 +1,6 @@
+page stage=DISPLAY_LIST boxes=5 nodes=4 content=20x1 truncated=0 script=0
+displaylist v1
+rect @0,0 20x1 color=navy
+link @0,0 20x1 url=https://e.com/docs
+text @0,0 20x1 "Read" color=blue
+image @0,1 20x0 alt="cat" src=https://e.com/a/cat.png

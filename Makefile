@@ -2,6 +2,7 @@ CC ?= cc
 CFLAGS ?= -std=c11 -Wall -Wextra -Werror -pedantic -O2 -g
 CPPFLAGS ?=
 LDFLAGS ?=
+PYTHON ?= python3
 BUILD_DIR := build
 SRC := src/codecs/bmp_decode.c
 URL_SRC := src/url/url_parse.c src/url/url_normalize.c src/url/origin.c
@@ -15,6 +16,7 @@ DL_SRC := src/displaylist/display_list.c
 DOWNLOAD_SRC := src/download/download.c
 SESSION_SRC := src/session/session.c
 FORMS_SRC := src/forms/forms.c
+PAGE_SRC := src/page/page_render.c
 # HTML parser reuses the C2 tokenizer + entity decoder.
 HTML_DEPS := src/text/html_entities.c src/text/html_tokenizer.c
 TEST_BIN := $(BUILD_DIR)/test_browser_codecs
@@ -29,6 +31,7 @@ DL_TEST_BIN := $(BUILD_DIR)/test_displaylist
 DOWNLOAD_TEST_BIN := $(BUILD_DIR)/test_download
 SESSION_TEST_BIN := $(BUILD_DIR)/test_session
 FORMS_TEST_BIN := $(BUILD_DIR)/test_forms
+PAGE_TEST_BIN := $(BUILD_DIR)/test_page
 HARNESS_TEST_BIN := $(BUILD_DIR)/test_harness
 VERSION_STR := $(shell cat VERSION)
 
@@ -39,6 +42,7 @@ HOST_LIB_SRC := host/fetch.c
 HOST_SRC := host/capybrowse.c $(HOST_LIB_SRC)
 HOST_DEPS := $(URL_SRC) $(TEXT_SRC) $(SESSION_SRC) $(DOWNLOAD_SRC)
 HOST_INCLUDES := -Ihost -Isrc/url -Isrc/text -Isrc/session -Isrc/download
+PAGE_INCLUDES := -Isrc/page -Isrc/html -Isrc/text -Isrc/css -Isrc/layout -Isrc/displaylist -Isrc/url
 HOST_BIN := $(BUILD_DIR)/capybrowse
 HOST_TEST_BIN := $(BUILD_DIR)/test_host
 
@@ -56,7 +60,7 @@ $(error invalid STAGE '$(STAGE)': use 'text' (Etapa 6) or 'core' (Etapa 7))
 endif
 CAPY_PKG_VERSION := $(VERSION_STR)
 CAPY_PKG_SUMMARY_text := CapyBrowse Text portable browser-core (HTML-to-text)
-CAPY_PKG_SUMMARY_core := CapyBrowser portable browser-core stub
+CAPY_PKG_SUMMARY_core := CapyBrowser portable static graphical browser core
 CAPY_PKG_SUMMARY := $(CAPY_PKG_SUMMARY_$(STAGE))
 CAPY_PKG_INSTALL_ROOT := /var/capypkg/$(CAPY_PKG_NAME)
 CAPY_PKG_DEPENDS_text :=
@@ -66,10 +70,19 @@ PUBLISH_URL_BASE ?= https://github.com/henriquefarisco/CapyBrowser/releases/down
 CAPY_PKG_DIR := $(BUILD_DIR)/capypkg
 CAPY_PKG_BIN := $(CAPY_PKG_DIR)/$(CAPY_PKG_NAME)-$(CAPY_PKG_VERSION).bin
 CAPY_PKG_MANIFEST := $(CAPY_PKG_DIR)/$(CAPY_PKG_NAME).manifest
+CAPY_PKG_INPUTS := VERSION $(shell find src docs -type f -print)
 
-.PHONY: all clean lint lint-extra security security-extra test test-url test-text test-image test-html test-harness capybrowse capybrowse-net test-host test-css test-cascade test-layout test-displaylist test-download test-session test-forms validate version-check package package-clean
+# Offline release output and opt-in remote publication verification. The remote
+# gate deliberately has no default index URL: callers must name the exact index
+# being promoted, so an old implicit pin cannot pass by accident.
+RELEASE_CHECK_DIR ?= $(BUILD_DIR)/release-check
+REMOTE_REPOSITORY ?= henriquefarisco/CapyBrowser
+REMOTE_TAG ?= v$(VERSION_STR)
+MODULES_INDEX_URL ?=
 
-all: test test-url test-text test-image test-html test-harness capybrowse test-host test-css test-cascade test-layout test-displaylist test-download test-session test-forms
+.PHONY: all clean lint lint-extra security security-extra test test-url test-text test-image test-html test-harness capybrowse capybrowse-net test-net test-host test-css test-cascade test-layout test-displaylist test-page test-download test-session test-forms validate version-check package package-clean release-check release-check-remote
+
+all: test test-url test-text test-image test-html test-harness capybrowse test-host test-css test-cascade test-layout test-displaylist test-page test-download test-session test-forms
 
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
@@ -123,6 +136,12 @@ $(HOST_BIN): $(HOST_SRC) $(HOST_DEPS) host/capy_host.h src/text/html_text.h src/
 # HTTPS-enabled build (opt-in; requires libcurl dev headers + -lcurl).
 capybrowse-net: $(HOST_SRC) $(HOST_DEPS) host/capy_host.h src/text/html_text.h src/url/url_parse.h src/session/session.h src/download/download.h | $(BUILD_DIR) ; $(CC) $(CPPFLAGS) $(CFLAGS) -DCAPY_HOST_HAVE_CURL $(HOST_INCLUDES) $(HOST_SRC) $(HOST_DEPS) $(LDFLAGS) -lcurl -o $(HOST_BIN) && chmod 755 $(HOST_BIN)
 
+# Deterministic smoke for the libcurl-linked binary. It does not require
+# external network access: launch the binary and render a local fixture.
+test-net: capybrowse-net
+	$(HOST_BIN) --help >/dev/null
+	$(HOST_BIN) --file tests/fixtures/html-to-text/basic.in >/dev/null
+
 # Host-side test for the reference front-end URL prep (HTTPS-first, fail-closed).
 test-host: $(HOST_TEST_BIN) ; $(HOST_TEST_BIN)
 $(HOST_TEST_BIN): tests/test_host.c $(HOST_LIB_SRC) $(URL_SRC) host/capy_host.h src/url/url_parse.h tests/harness/capy_test.h | $(BUILD_DIR) ; $(CC) $(CPPFLAGS) $(CFLAGS) -Ihost -Isrc/url -Itests/harness tests/test_host.c $(HOST_LIB_SRC) $(URL_SRC) $(LDFLAGS) -o $@ && chmod 755 $@
@@ -141,6 +160,10 @@ $(LAYOUT_TEST_BIN): $(LAYOUT_SRC) $(CASCADE_SRC) $(CSS_SRC) $(HTML_SRC) $(HTML_D
 # Display-list test: versioned draw nodes from box tree + styles (consumes M1/M2/M3a + C1 for link URLs).
 test-displaylist: $(DL_TEST_BIN) ; $(DL_TEST_BIN) tests/fixtures/display-list
 $(DL_TEST_BIN): $(DL_SRC) $(LAYOUT_SRC) $(CASCADE_SRC) $(CSS_SRC) $(URL_SRC) $(HTML_SRC) $(HTML_DEPS) tests/test_displaylist.c src/displaylist/display_list.h src/layout/layout.h src/css/cascade.h src/css/css_parse.h src/html/dom.h src/url/url_parse.h tests/harness/capy_test.h | $(BUILD_DIR) ; $(CC) $(CPPFLAGS) $(CFLAGS) -Isrc/displaylist -Isrc/layout -Isrc/css -Isrc/html -Isrc/text -Isrc/url -Itests/harness $(DL_SRC) $(LAYOUT_SRC) $(CASCADE_SRC) $(CSS_SRC) $(URL_SRC) $(HTML_SRC) $(HTML_DEPS) tests/test_displaylist.c $(LDFLAGS) -o $@ && chmod 755 $@
+
+# Production page-pipeline test: one API composes DOM -> CSS -> layout -> DL.
+test-page: $(PAGE_TEST_BIN) ; $(PAGE_TEST_BIN) tests/fixtures/page
+$(PAGE_TEST_BIN): $(PAGE_SRC) $(DL_SRC) $(LAYOUT_SRC) $(CASCADE_SRC) $(CSS_SRC) $(URL_SRC) $(HTML_SRC) $(HTML_DEPS) tests/test_page.c src/page/page_render.h tests/harness/capy_test.h | $(BUILD_DIR) ; $(CC) $(CPPFLAGS) $(CFLAGS) $(PAGE_INCLUDES) -Itests/harness $(PAGE_SRC) $(DL_SRC) $(LAYOUT_SRC) $(CASCADE_SRC) $(CSS_SRC) $(URL_SRC) $(HTML_SRC) $(HTML_DEPS) tests/test_page.c $(LDFLAGS) -o $@ && chmod 755 $@
 
 # Download decision test: HTTPS-first + filename sanitization (consumes C1).
 test-download: $(DOWNLOAD_TEST_BIN) ; $(DOWNLOAD_TEST_BIN)
@@ -163,6 +186,7 @@ lint: lint-extra
 	$(CC) $(CPPFLAGS) $(CFLAGS) -Isrc/url -Isrc/text -fsyntax-only $(TEXT_SRC)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -Isrc/adapter -Isrc/codec -fsyntax-only $(IMAGE_SRC)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -Isrc/html -Isrc/text -Isrc/url -fsyntax-only $(HTML_SRC)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(PAGE_INCLUDES) -fsyntax-only $(PAGE_SRC)
 	git diff --check
 
 # Hardened syntax-only coverage for the CSS, cascade, host, layout, display-list, download, session and forms modules.
@@ -173,23 +197,22 @@ security: security-extra
 	$(CC) $(CPPFLAGS) $(CFLAGS) -Isrc/url -Isrc/text -D_FORTIFY_SOURCE=2 -fstack-protector-strong -fPIE -fsyntax-only $(TEXT_SRC)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -Isrc/adapter -Isrc/codec -D_FORTIFY_SOURCE=2 -fstack-protector-strong -fPIE -fsyntax-only $(IMAGE_SRC)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -Isrc/html -Isrc/text -Isrc/url -D_FORTIFY_SOURCE=2 -fstack-protector-strong -fPIE -fsyntax-only $(HTML_SRC)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(PAGE_INCLUDES) -D_FORTIFY_SOURCE=2 -fstack-protector-strong -fPIE -fsyntax-only $(PAGE_SRC)
 
 version-check:
-	test -n "$(VERSION_STR)"
-	grep -q "Version: $(VERSION_STR)" README.md
+	$(PYTHON) tools/release_gate.py metadata --root .
 
-validate: lint security test test-url test-text test-image test-html test-harness capybrowse test-host test-css test-cascade test-layout test-displaylist test-download test-session test-forms version-check
+validate: lint security test test-url test-text test-image test-html test-harness capybrowse test-host test-css test-cascade test-layout test-displaylist test-page test-download test-session test-forms version-check
 
 # package: build the artefact + manifest the in-tree CapyOS adapter
 # consumes (see CapyOS/docs/reference/integration/capypkg-publisher-manifest-format.md).
 package: $(CAPY_PKG_MANIFEST)
 
-$(CAPY_PKG_BIN): $(SRC) | $(BUILD_DIR)
+$(CAPY_PKG_BIN): $(CAPY_PKG_INPUTS) | $(BUILD_DIR)
 	@mkdir -p $(CAPY_PKG_DIR)
 	@tar --format=ustar --owner=0 --group=0 --numeric-owner \
 	     --mtime='@0' --sort=name \
-	     -cf $@ src docs VERSION 2>/dev/null || \
-	  tar -cf $@ src docs VERSION
+	     -cf $@ src docs VERSION
 	@echo "[package] $@"
 
 $(CAPY_PKG_MANIFEST): $(CAPY_PKG_BIN)
@@ -212,6 +235,36 @@ $(CAPY_PKG_MANIFEST): $(CAPY_PKG_BIN)
 
 package-clean:
 	rm -rf $(CAPY_PKG_DIR)
+
+# Full offline release gate: strict validation, libcurl-linked smoke, both
+# package identities, manifest/hash checks and byte-for-byte reproducibility.
+# Remote tag/assets/index checks stay in release-check-remote below.
+release-check:
+	$(MAKE) validate
+	$(MAKE) test-net
+	$(MAKE) BUILD_DIR="$(RELEASE_CHECK_DIR)/pass1" package-clean
+	$(MAKE) BUILD_DIR="$(RELEASE_CHECK_DIR)/pass1" package STAGE=text
+	$(MAKE) BUILD_DIR="$(RELEASE_CHECK_DIR)/pass1" package STAGE=core
+	$(MAKE) BUILD_DIR="$(RELEASE_CHECK_DIR)/pass2" package-clean
+	$(MAKE) BUILD_DIR="$(RELEASE_CHECK_DIR)/pass2" package STAGE=text
+	$(MAKE) BUILD_DIR="$(RELEASE_CHECK_DIR)/pass2" package STAGE=core
+	$(PYTHON) tools/release_gate.py offline --root . \
+		--first-dir "$(RELEASE_CHECK_DIR)/pass1/capypkg" \
+		--second-dir "$(RELEASE_CHECK_DIR)/pass2/capypkg" \
+		--repository "$(REMOTE_REPOSITORY)"
+
+# Opt-in post-publication gate. Example:
+#   make release-check-remote MODULES_INDEX_URL=https://.../modules-index.txt
+release-check-remote: release-check
+	@if [ -z "$(MODULES_INDEX_URL)" ]; then \
+		echo "[release-remote] FAIL: MODULES_INDEX_URL is required" >&2; \
+		exit 2; \
+	fi
+	$(PYTHON) tools/release_gate.py remote --root . \
+		--artifacts-dir "$(RELEASE_CHECK_DIR)/pass1/capypkg" \
+		--repository "$(REMOTE_REPOSITORY)" \
+		--tag "$(REMOTE_TAG)" \
+		--index-url "$(MODULES_INDEX_URL)"
 
 clean:
 	rm -rf $(BUILD_DIR)
