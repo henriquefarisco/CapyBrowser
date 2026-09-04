@@ -4,7 +4,7 @@ CapyBrowser is the external browser-core repository for CapyOS.
 
 ## CapyOS reference version
 
-Pinned for this release: `0.8.0-alpha.309+20260702`. `make version-check`
+Pinned for this release: `0.10.0-alpha.1+20260903`. `make version-check`
 enforces this value against `docs/compatibility.md`, `docs/roadmap.md` and the
 sibling `CapyOS/VERSION.yaml` when that repository is available.
 
@@ -24,7 +24,7 @@ CapyBrowser owns portable browser logic. CapyCodecs owns portable codec logic. C
 ## Current status
 
 The historical CapyOS browser application source is not present in active
-`src/apps`. CapyBrowser 0.6.7 provides URL and HTML-to-text cores, a static
+`src/apps`. CapyBrowser 0.6.8 provides URL and HTML-to-text cores, a static
 HTML/CSS page pipeline, layout/display-list output and the host-testable
 download/session/forms decision surfaces. CapyOS consumes the text and
 graphical cores in Etapas 6-7; codecs remain canonically owned by CapyCodecs.

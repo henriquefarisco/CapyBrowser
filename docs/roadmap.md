@@ -3,9 +3,9 @@
 **Status:** proposta de planejamento de produto/engenharia. Subordinada
 aos documentos de contrato; não altera ABI nem limites até ser refletida
 em `compatibility.md` e na matriz cross-repo do CapyOS.
-**Versão atual:** `0.6.7` (core textual publicado desde `v0.6.0`; pipeline
+**Versão atual:** `0.6.8` (core textual publicado desde `v0.6.0`; pipeline
 gráfico estático e URL de imagem resolvida consumidos pela Etapa 7).
-**Pin CapyOS:** `0.8.0-alpha.309+20260702` (ver [`compatibility.md`](compatibility.md)).
+**Pin CapyOS:** `0.10.0-alpha.1+20260903` (ver [`compatibility.md`](compatibility.md)).
 **Política de gate:** `make validate` e `make release-check` são offline e
 rodam localmente/na CI. A verificação de tag, GitHub Release, assets e índice é
 separada e explícita via `make release-check-remote MODULES_INDEX_URL=...`.
@@ -217,7 +217,7 @@ surface").
 **Critério de saída:** snapshot BMP retirado do caminho de build; decode roteado 100% via adapter; teste de falha de decode → placeholder determinístico.
 **Mapeia para:** exibir imagens (preparação; render só na Etapa 7).
 
-**Resultado consolidado até 0.6.7:** navegador de texto, core URL, pipeline
+**Resultado consolidado até 0.6.8:** navegador de texto, core URL, pipeline
 gráfico estático, imagem via adapter e superfícies puras de download,
 sessão/privacidade e forms. O wiring completo dessas últimas superfícies no
 runtime continua no bloco M4/L1.

@@ -1,13 +1,13 @@
 # CapyBrowser release readiness
 
-Snapshot: 2026-07-11. Target: `0.6.7`, pinned to CapyOS
-`0.8.0-alpha.309+20260702`.
+Snapshot: 2026-09-04. Target: `0.6.8`, pinned to CapyOS
+`0.10.0-alpha.1+20260903`.
 
 ## Completion
 
 | Scope | Completion | Meaning |
 |---|---:|---|
-| Local `0.6.7` release implementation | 100% | Source, tests, HTTPS-linked build, both packages and deterministic offline gate pass. |
+| Local `0.6.8` release implementation | 100% | Source, tests, HTTPS-linked build, both packages and deterministic offline gate pass. |
 | Publish/install readiness | 80% | Code is ready; GitHub Release assets, aggregate modules index and VM install smoke remain external. |
 | Static graphical browser core | 82% | Production page pipeline exists; runtime resource/form/download wiring and broader HTML/CSS remain. |
 | Modern dynamic-web browser | 30% | Static safe browsing works; JavaScript, dynamic DOM/events/fetch and full layout are later stages. |
@@ -29,12 +29,12 @@ release gate does not claim parity with Chromium/Firefox-class dynamic sites.
   hashes, paths and byte-for-byte reproducibility.
 - CI and CodeQL compile the real browser surfaces, including the libcurl host.
 
-## P0 before publishing/installing `0.6.7`
+## P0 before publishing/installing `0.6.8`
 
-1. Commit the reviewed tree and create the immutable `v0.6.7` tag from that
+1. Commit the reviewed tree and create the immutable `v0.6.8` tag from that
    clean commit. Do not move/reuse `v0.6.6`: it already points to the pre-fix
    source revision.
-2. Create the GitHub Release `v0.6.7` and upload the exact four artifacts
+2. Create the GitHub Release `v0.6.8` and upload the exact four artifacts
    produced under `build/release-check/pass1/capypkg/`.
 3. Generate and publish one aggregate modules index containing both current
    CapyBrowser descriptors plus compatible current dependencies. The current

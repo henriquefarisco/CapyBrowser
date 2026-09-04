@@ -63,6 +63,11 @@ CAPY_PKG_SUMMARY_text := CapyBrowse Text portable browser-core (HTML-to-text)
 CAPY_PKG_SUMMARY_core := CapyBrowser portable static graphical browser core
 CAPY_PKG_SUMMARY := $(CAPY_PKG_SUMMARY_$(STAGE))
 CAPY_PKG_INSTALL_ROOT := /var/capypkg/$(CAPY_PKG_NAME)
+CAPY_PKG_PROVIDES_ABI := capy-browser-core
+CAPY_PKG_ABI_VERSION := 1
+CAPY_PKG_CORE_ABI_MIN := 3
+CAPY_PKG_CORE_ABI_MAX := 3
+CAPY_PKG_KNOWN_GOOD := 1
 CAPY_PKG_DEPENDS_text :=
 CAPY_PKG_DEPENDS_core := org.capyos.codecs.image-basic
 CAPY_PKG_DEPENDS := $(CAPY_PKG_DEPENDS_$(STAGE))
@@ -187,7 +192,7 @@ lint: lint-extra
 	$(CC) $(CPPFLAGS) $(CFLAGS) -Isrc/adapter -Isrc/codec -fsyntax-only $(IMAGE_SRC)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -Isrc/html -Isrc/text -Isrc/url -fsyntax-only $(HTML_SRC)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(PAGE_INCLUDES) -fsyntax-only $(PAGE_SRC)
-	git diff --check
+	git -c core.whitespace=cr-at-eol diff --check
 
 # Hardened syntax-only coverage for the CSS, cascade, host, layout, display-list, download, session and forms modules.
 security-extra: ; $(CC) $(CPPFLAGS) $(CFLAGS) -Isrc/css -D_FORTIFY_SOURCE=2 -fstack-protector-strong -fPIE -fsyntax-only $(CSS_SRC) && $(CC) $(CPPFLAGS) $(CFLAGS) -Isrc/css -Isrc/html -D_FORTIFY_SOURCE=2 -fstack-protector-strong -fPIE -fsyntax-only $(CASCADE_SRC) && $(CC) $(CPPFLAGS) $(CFLAGS) $(HOST_INCLUDES) -D_FORTIFY_SOURCE=2 -fstack-protector-strong -fPIE -fsyntax-only $(HOST_SRC) && $(CC) $(CPPFLAGS) $(CFLAGS) -Isrc/layout -Isrc/css -Isrc/html -D_FORTIFY_SOURCE=2 -fstack-protector-strong -fPIE -fsyntax-only $(LAYOUT_SRC) && $(CC) $(CPPFLAGS) $(CFLAGS) -Isrc/displaylist -Isrc/layout -Isrc/css -Isrc/html -Isrc/url -D_FORTIFY_SOURCE=2 -fstack-protector-strong -fPIE -fsyntax-only $(DL_SRC) && $(CC) $(CPPFLAGS) $(CFLAGS) -Isrc/download -Isrc/url -D_FORTIFY_SOURCE=2 -fstack-protector-strong -fPIE -fsyntax-only $(DOWNLOAD_SRC) && $(CC) $(CPPFLAGS) $(CFLAGS) -Isrc/session -Isrc/url -D_FORTIFY_SOURCE=2 -fstack-protector-strong -fPIE -fsyntax-only $(SESSION_SRC) && $(CC) $(CPPFLAGS) $(CFLAGS) -Isrc/forms -Isrc/url -D_FORTIFY_SOURCE=2 -fstack-protector-strong -fPIE -fsyntax-only $(FORMS_SRC)
@@ -228,6 +233,11 @@ $(CAPY_PKG_MANIFEST): $(CAPY_PKG_BIN)
 	  echo "payload_sha256=$$SHA" ; \
 	  echo "payload_size=$$SIZE" ; \
 	  echo "install_root=$(CAPY_PKG_INSTALL_ROOT)" ; \
+	  echo "provides_abi=$(CAPY_PKG_PROVIDES_ABI)" ; \
+	  echo "abi_version=$(CAPY_PKG_ABI_VERSION)" ; \
+	  echo "core_abi_min=$(CAPY_PKG_CORE_ABI_MIN)" ; \
+	  echo "core_abi_max=$(CAPY_PKG_CORE_ABI_MAX)" ; \
+	  echo "known_good=$(CAPY_PKG_KNOWN_GOOD)" ; \
 	  echo "depends=$(CAPY_PKG_DEPENDS)" ; \
 	  echo "---" ; \
 	} > $@
