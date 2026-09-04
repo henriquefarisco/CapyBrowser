@@ -24,7 +24,7 @@ CapyBrowser owns portable browser logic. CapyCodecs owns portable codec logic. C
 ## Current status
 
 The historical CapyOS browser application source is not present in active
-`src/apps`. CapyBrowser 0.6.7 provides URL and HTML-to-text cores, a static
+`src/apps`. CapyBrowser 0.6.8 provides URL and HTML-to-text cores, a static
 HTML/CSS page pipeline, layout/display-list output and the host-testable
 download/session/forms decision surfaces. CapyOS consumes the text and
 graphical cores in Etapas 6-7; codecs remain canonically owned by CapyCodecs.
