@@ -5,7 +5,7 @@ aos documentos de contrato; não altera ABI nem limites até ser refletida
 em `compatibility.md` e na matriz cross-repo do CapyOS.
 **Versão atual:** `0.6.7` (core textual publicado desde `v0.6.0`; pipeline
 gráfico estático e URL de imagem resolvida consumidos pela Etapa 7).
-**Pin CapyOS:** `0.8.0-alpha.309+20260702` (ver [`compatibility.md`](compatibility.md)).
+**Pin CapyOS:** `0.10.0-alpha.1+20260903` (ver [`compatibility.md`](compatibility.md)).
 **Política de gate:** `make validate` e `make release-check` são offline e
 rodam localmente/na CI. A verificação de tag, GitHub Release, assets e índice é
 separada e explícita via `make release-check-remote MODULES_INDEX_URL=...`.

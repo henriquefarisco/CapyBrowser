@@ -1,7 +1,7 @@
 # CapyBrowser release readiness
 
 Snapshot: 2026-07-11. Target: `0.6.7`, pinned to CapyOS
-`0.8.0-alpha.309+20260702`.
+`0.10.0-alpha.1+20260903`.
 
 ## Completion
 

@@ -4,7 +4,7 @@ CapyBrowser is the external browser-core repository for CapyOS.
 
 ## CapyOS reference version
 
-Pinned for this release: `0.8.0-alpha.309+20260702`. `make version-check`
+Pinned for this release: `0.10.0-alpha.1+20260903`. `make version-check`
 enforces this value against `docs/compatibility.md`, `docs/roadmap.md` and the
 sibling `CapyOS/VERSION.yaml` when that repository is available.
 
